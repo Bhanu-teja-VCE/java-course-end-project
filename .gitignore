@@ -1,0 +1,12 @@
+target/
+app/target/
+*.class
+app/sources.txt
+logs/
+app/logs/
+db.properties
+app/db.properties
+.idea/
+*.iml
+.vscode/
+.DS_Store
