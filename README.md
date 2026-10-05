@@ -3,6 +3,7 @@
 **Course:** Object Oriented Programming through Java (B.Tech CSE)  
 **Project:** Java Course End Project  
 **Author / Developer:** Bhanu Teja ([@Bhanu-teja-VCE](https://github.com/Bhanu-teja-VCE))  
+**Interactive Visual Guide:** 🌐 [Open `project-explained.html`](project-explained.html) for a complete visual architectural breakdown and interactive diagrams.
 
 ---
 

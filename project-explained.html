@@ -1,0 +1,2023 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GreenCorridor Under the Hood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400..700&display=swap">
+<style>
+/* Layout concept: a long-read article with a sticky chapter list on wide screens.
+   Look: highway signage (wide grotesque headings, signal green) around a serif reading column. */
+:root {
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --bg: #f2f5f3;
+  --surface: #ffffff;
+  --surface-2: #e8eeea;
+  --ink: #15201b;
+  --ink-2: #37453e;
+  --muted: #5d6c64;
+  --rule: #cbd6d0;
+  --accent: #12794a;
+  --accent-strong: #0b5a35;
+  --accent-soft: #dbeee3;
+  --red: #b3261e;
+  --red-soft: #f7dedb;
+  --amber: #86570a;
+  --amber-soft: #f6ead0;
+  --blue: #1d5fa8;
+  --blue-soft: #dde9f6;
+
+  --asphalt: #2d3337;
+  --marking: #f4f6f5;
+  --lamp-off: #bfcac4;
+
+  --code-bg: #e9efeb;
+  --code-ink: #1a2922;
+  --c-kw: #1d5fa8;
+  --c-str: #94490a;
+  --c-cm: #5d6c64;
+  --c-num: #7a3d9c;
+  --c-an: #0b6b43;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1412;
+    --surface: #161d1a;
+    --surface-2: #1d2622;
+    --ink: #e6ede9;
+    --ink-2: #bac7c0;
+    --muted: #8b9b93;
+    --rule: #2b3732;
+    --accent: #46c585;
+    --accent-strong: #7ddaa8;
+    --accent-soft: #15382a;
+    --red: #ff8077;
+    --red-soft: #3b1c1a;
+    --amber: #ebb34c;
+    --amber-soft: #3a2d10;
+    --blue: #7db4ee;
+    --blue-soft: #15283d;
+    --asphalt: #3b4247;
+    --marking: #e9eeec;
+    --lamp-off: #4a5750;
+    --code-bg: #0c110f;
+    --code-ink: #dbe6e0;
+    --c-kw: #7db4ee;
+    --c-str: #f0b36c;
+    --c-cm: #7f8f87;
+    --c-num: #cf9bec;
+    --c-an: #6fd6a2;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1412;
+  --surface: #161d1a;
+  --surface-2: #1d2622;
+  --ink: #e6ede9;
+  --ink-2: #bac7c0;
+  --muted: #8b9b93;
+  --rule: #2b3732;
+  --accent: #46c585;
+  --accent-strong: #7ddaa8;
+  --accent-soft: #15382a;
+  --red: #ff8077;
+  --red-soft: #3b1c1a;
+  --amber: #ebb34c;
+  --amber-soft: #3a2d10;
+  --blue: #7db4ee;
+  --blue-soft: #15283d;
+  --asphalt: #3b4247;
+  --marking: #e9eeec;
+  --lamp-off: #4a5750;
+  --code-bg: #0c110f;
+  --code-ink: #dbe6e0;
+  --c-kw: #7db4ee;
+  --c-str: #f0b36c;
+  --c-cm: #7f8f87;
+  --c-num: #cf9bec;
+  --c-an: #6fd6a2;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  padding-inline: 16px;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.72;
+  text-rendering: optimizeLegibility;
+  overflow-wrap: break-word;
+}
+img { max-width: 100%; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:hover { color: var(--accent-strong); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.progress {
+  position: fixed; top: 0; left: 0; width: 100%; height: 3px; z-index: 50;
+  background: var(--accent); transform: scaleX(0); transform-origin: 0 50%;
+}
+
+/* ---------- hero ---------- */
+.hero { max-width: 1100px; margin: 0 auto; padding-block: 44px 8px; }
+.eyebrow {
+  margin: 0; font: 600 .75rem/1.5 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
+h1 {
+  margin: 14px 0 0; max-width: 16ch;
+  font-family: var(--font-display); font-stretch: 118%; font-weight: 800;
+  font-size: clamp(2.5rem, 7.5vw, 5rem); line-height: .98; letter-spacing: -.02em; text-wrap: balance;
+}
+.lede { max-width: 40rem; margin: 22px 0 0; font-size: 1.28rem; line-height: 1.55; color: var(--ink-2); }
+.meta {
+  list-style: none; margin: 26px 0 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 8px 28px;
+  font: 500 .85rem/1.4 var(--font-display); color: var(--muted);
+}
+.meta b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.hero-road { margin-top: 32px; border: 1px solid var(--rule); background: var(--surface); overflow: hidden; }
+.hero-road svg { display: block; width: 100%; height: auto; }
+
+/* ---------- page shell ---------- */
+.shell { max-width: 1100px; margin: 0 auto; padding-block: 36px 96px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; }
+.toc { font-family: var(--font-display); font-size: .86rem; line-height: 1.35; }
+.toc h2 {
+  margin: 0 0 10px; font: 600 .72rem/1.4 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
+.toc h2::before { content: none; }
+.toc ol { list-style: none; margin: 0; padding: 0; counter-reset: toc; display: grid; gap: 2px; }
+.toc li { counter-increment: toc; }
+.toc a {
+  display: grid; grid-template-columns: 2.1rem minmax(0, 1fr); padding: 6px 8px;
+  color: var(--ink-2); text-decoration: none; border-radius: 3px;
+}
+.toc a::before { content: counter(toc, decimal-leading-zero); font: 500 .72rem/1.9 var(--font-mono); color: var(--muted); }
+.toc a:hover { background: var(--surface-2); color: var(--ink); }
+.toc a.on { background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; }
+@media (max-width: 1039px) {
+  .toc { border: 1px solid var(--rule); background: var(--surface); padding: 16px; }
+  .toc ol { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+}
+@media (min-width: 1040px) {
+  .shell { grid-template-columns: 250px minmax(0, 740px); gap: 64px; justify-content: center; }
+  .toc { position: sticky; top: 24px; align-self: start; max-height: calc(100vh - 48px); overflow: auto; padding-right: 6px; }
+}
+
+/* ---------- article ---------- */
+article { display: flex; flex-direction: column; gap: 1.15rem; counter-reset: sec; min-width: 0; }
+article > * { min-width: 0; max-width: 100%; margin: 0; }
+article h2 {
+  margin-top: 3.4rem; scroll-margin-top: 24px;
+  font-family: var(--font-display); font-stretch: 112%; font-weight: 800;
+  font-size: clamp(1.7rem, 4vw, 2.25rem); line-height: 1.08; letter-spacing: -.015em; text-wrap: balance;
+}
+article h2::before {
+  content: "Chapter " counter(sec, decimal-leading-zero); counter-increment: sec;
+  display: block; margin-bottom: 10px;
+  font: 600 .72rem/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent);
+}
+article h3 {
+  margin-top: 1.6rem; scroll-margin-top: 24px;
+  font-family: var(--font-display); font-stretch: 104%; font-weight: 750; font-size: 1.28rem; line-height: 1.2; text-wrap: balance;
+}
+article h4 {
+  margin-top: .6rem; font: 700 .78rem/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
+article ul, article ol { padding-left: 1.4rem; display: flex; flex-direction: column; gap: .5rem; }
+article li::marker { color: var(--accent); }
+article strong { font-weight: 700; }
+code {
+  font: .86em/1.3 var(--font-mono); background: var(--surface-2); color: var(--ink);
+  padding: .1em .38em; border-radius: 3px; overflow-wrap: anywhere;
+}
+.drop::first-letter {
+  float: left; font: 800 3.7rem/.82 var(--font-display); font-stretch: 118%; padding: .06em .1em 0 0; color: var(--accent);
+}
+
+/* ---------- callouts (tinted block with a label, no rail) ---------- */
+.call { padding: 16px 20px; border-radius: 4px; background: var(--cb, var(--accent-soft)); display: flex; flex-direction: column; gap: .5rem; }
+.call .tag { font: 700 .7rem/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--cf, var(--accent-strong)); }
+.call p, .call ul { margin: 0; }
+.call.bug { --cb: var(--red-soft); --cf: var(--red); }
+.call.warn { --cb: var(--amber-soft); --cf: var(--amber); }
+.call.idea { --cb: var(--blue-soft); --cf: var(--blue); }
+
+/* ---------- code ---------- */
+.code { background: var(--code-bg); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.code .cap {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 7px 14px; border-bottom: 1px solid var(--rule);
+  font: 500 .72rem/1.4 var(--font-mono); color: var(--muted);
+}
+.code pre { margin: 0; padding: 14px; overflow-x: auto; font: .8125rem/1.62 var(--font-mono); color: var(--code-ink); tab-size: 4; }
+.code code { background: none; padding: 0; font: inherit; color: inherit; overflow-wrap: normal; }
+.kw { color: var(--c-kw); font-weight: 600; }
+.st { color: var(--c-str); }
+.cm { color: var(--c-cm); font-style: italic; }
+.nu { color: var(--c-num); }
+.an { color: var(--c-an); }
+
+/* ---------- tables ---------- */
+.tablewrap { overflow-x: auto; border: 1px solid var(--rule); background: var(--surface); border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font: 400 .88rem/1.5 var(--font-display); }
+th {
+  text-align: left; padding: 10px 14px; background: var(--surface-2); color: var(--ink-2);
+  font: 700 .7rem/1.3 var(--font-mono); letter-spacing: .07em; text-transform: uppercase; white-space: nowrap;
+}
+td { padding: 10px 14px; border-top: 1px solid var(--rule); vertical-align: top; }
+td:first-child { font-weight: 650; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.hl td { background: var(--accent-soft); }
+
+/* ---------- figures and diagrams ---------- */
+figure { display: flex; flex-direction: column; gap: 8px; }
+figure img { display: block; width: 100%; height: auto; border: 1px solid var(--rule); background: var(--surface); }
+figcaption { font: 400 .85rem/1.5 var(--font-display); color: var(--muted); }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 640px) { .pair { grid-template-columns: minmax(0, 1fr); } }
+.diagram { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 14px; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 600px; height: auto; }
+svg text { font-family: var(--font-display); fill: var(--ink); }
+svg .t-title { font-size: 14px; font-weight: 800; font-stretch: 112%; }
+svg .t-md { font-size: 12.5px; font-weight: 650; }
+svg .t-sm { font-size: 11.5px; font-weight: 450; }
+svg .t-mono { font-family: var(--font-mono); font-size: 11px; font-weight: 500; }
+svg .t-muted { fill: var(--muted); }
+svg .t-acc { fill: var(--accent-strong); }
+svg .t-red { fill: var(--red); }
+svg .t-ctr { text-anchor: middle; }
+svg .t-end { text-anchor: end; }
+svg .box { fill: var(--surface-2); stroke: var(--rule); stroke-width: 1.2; }
+svg .box-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
+svg .box-blue { fill: var(--blue-soft); stroke: var(--blue); stroke-width: 1.2; }
+svg .box-red { fill: var(--red-soft); stroke: var(--red); stroke-width: 1.2; }
+svg .box-amb { fill: var(--amber-soft); stroke: var(--amber); stroke-width: 1.2; }
+svg .chip { fill: var(--surface); stroke: var(--rule); stroke-width: 1; }
+svg .ln { stroke: var(--ink-2); stroke-width: 1.5; fill: none; }
+svg .ln-d { stroke: var(--muted); stroke-width: 1.3; fill: none; stroke-dasharray: 5 4; }
+svg .ln-acc { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+svg .ln-red { stroke: var(--red); stroke-width: 1.8; fill: none; }
+svg .grid { stroke: var(--rule); stroke-width: 1; fill: none; }
+svg .ah { fill: var(--ink-2); }
+svg .road { fill: var(--asphalt); }
+svg .mark { stroke: var(--marking); stroke-width: 2; fill: none; stroke-dasharray: 12 10; }
+svg .stopln { fill: var(--marking); }
+svg .hatch { stroke: var(--amber); stroke-width: 1.6; }
+svg .bar-red { fill: var(--red); }
+svg .bar-blue { fill: var(--blue); }
+svg .bar-acc { fill: var(--accent); }
+svg .seg-g { fill: #34c759; }
+svg .seg-y { fill: #ffcc00; }
+svg .seg-r { fill: #ff3b30; }
+svg .seg-txt { fill: #0e1a12; font-size: 11.5px; font-weight: 700; text-anchor: middle; }
+svg .seg-txt-w { fill: #ffffff; font-size: 11.5px; font-weight: 700; text-anchor: middle; }
+svg .veh { fill: var(--surface); stroke: var(--ink-2); stroke-width: 1.4; }
+svg .veh-b { fill: var(--blue-soft); stroke: var(--blue); stroke-width: 1.4; }
+svg .amb { fill: #ffffff; stroke: #c62828; stroke-width: 1.6; }
+svg .cross { fill: #c62828; }
+svg .band { fill: var(--accent); opacity: .28; }
+svg .lamp-g { fill: #34c759; }
+svg .lamp-r { fill: #ff3b30; }
+
+.hero-road .ambulance { animation: drive 11s linear infinite; }
+@keyframes drive { from { transform: translateX(-90px); } to { transform: translateX(1010px); } }
+@media (prefers-reduced-motion: reduce) {
+  .hero-road .ambulance { animation: none; transform: translateX(330px); }
+  html { scroll-behavior: auto; }
+}
+
+/* ---------- interactive signal widget ---------- */
+.widget { border: 1px solid var(--rule); background: var(--surface); border-radius: 4px; overflow: hidden; font-family: var(--font-display); }
+.widget .w-head {
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px;
+  padding: 12px 16px; background: var(--surface-2); border-bottom: 1px solid var(--rule);
+}
+.widget .w-head strong { font-weight: 800; font-stretch: 108%; font-size: .98rem; }
+.widget .w-head span { font: 500 .72rem/1.6 var(--font-mono); color: var(--muted); }
+.widget .w-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; padding: 18px 16px; align-items: center; }
+@media (max-width: 520px) { .widget .w-body { grid-template-columns: minmax(0, 1fr); } }
+.w-lights { display: flex; gap: 18px; }
+.light { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: .72rem; font-weight: 700; color: var(--muted); }
+.lamps { display: flex; flex-direction: column; gap: 7px; padding: 9px; border-radius: 12px; background: var(--asphalt); }
+.lamps i { width: 20px; height: 20px; border-radius: 50%; background: var(--lamp-off); opacity: .3; transition: opacity .15s, box-shadow .15s; }
+.lamps i.on { opacity: 1; }
+.lamps i.r.on { background: #ff3b30; box-shadow: 0 0 12px #ff3b30; }
+.lamps i.y.on { background: #ffcc00; box-shadow: 0 0 12px #ffcc00; }
+.lamps i.g.on { background: #34c759; box-shadow: 0 0 12px #34c759; }
+.w-state { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.phase { font-weight: 800; font-stretch: 108%; font-size: 1.15rem; line-height: 1.2; }
+.bar { height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+.bar .fill { height: 100%; width: 0; background: var(--accent); }
+.bar .fill.hold { background: var(--red); }
+.w-meta { display: flex; justify-content: space-between; gap: 12px; font: 500 .75rem/1.4 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.w-reqs { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; }
+.w-reqs span { padding: 4px 9px; border-radius: 3px; font: 600 .74rem/1.3 var(--font-display); background: var(--red-soft); color: var(--red); }
+.w-reqs span.fire { background: var(--amber-soft); color: var(--amber); }
+.w-reqs span.first::after { content: " (served first)"; font-weight: 450; }
+.w-controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 14px; align-items: center; }
+.widget button, .widget select {
+  font: 650 .8rem/1 var(--font-display); padding: 9px 12px; border-radius: 3px; cursor: pointer;
+  background: var(--surface-2); color: var(--ink); border: 1px solid var(--rule);
+}
+.widget button:hover { border-color: var(--accent); }
+.widget button.go { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.widget button:disabled { opacity: .45; cursor: not-allowed; }
+.w-log {
+  margin: 0; padding: 10px 16px; list-style: none; display: flex; flex-direction: column; gap: 3px;
+  max-height: 168px; overflow-y: auto; border-top: 1px solid var(--rule);
+  font: 400 .76rem/1.5 var(--font-mono); color: var(--ink-2);
+}
+.w-log li b { color: var(--muted); font-weight: 500; margin-right: 8px; }
+
+/* ---------- question and answer list ---------- */
+dl.qa { border-top: 1px solid var(--rule); }
+dl.qa dt { margin: 0; padding: 16px 0 4px; font-family: var(--font-display); font-stretch: 104%; font-weight: 750; font-size: 1.02rem; line-height: 1.35; }
+dl.qa dd { margin: 0; padding: 0 0 16px; border-bottom: 1px solid var(--rule); color: var(--ink-2); }
+
+/* ---------- footer ---------- */
+.foot { margin-top: 3rem; padding-top: 1.4rem; border-top: 1px solid var(--rule); font: 400 .88rem/1.6 var(--font-display); color: var(--muted); }
+</style>
+
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path class="ah" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+    <pattern id="hatch" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line class="hatch" x1="0" y1="0" x2="0" y2="9"/>
+    </pattern>
+  </defs>
+</svg>
+
+<header class="hero">
+  <p class="eyebrow">Course End Project &middot; Object Oriented Programming through Java &middot; VCE-R25 &middot; Batch 6</p>
+  <h1>GreenCorridor, under the hood</h1>
+  <p class="lede">A Java simulator where every car, bus and ambulance is its own thread, every junction has its own signal controller, and an ambulance can turn the whole route green before it arrives. This is a complete walk through how it works, what each piece of the syllabus does inside it, and why the code is written the way it is.</p>
+  <ul class="meta">
+    <li><b>8,437</b> lines of Java in 8 packages</li>
+    <li><b>26</b> automated tests</li>
+    <li><b>30&ndash;80</b> threads in a running simulation</li>
+    <li><b>5</b> syllabus units covered</li>
+    <li>About <b>40 minutes</b> to read</li>
+  </ul>
+  <div class="hero-road">
+    <svg viewBox="0 0 960 150" role="img" aria-label="An ambulance driving east along a road with three junctions. The lights ahead of it are green and cars on the cross streets wait at red.">
+      <rect class="road" x="0" y="46" width="960" height="58"/>
+      <rect class="road" x="221" y="0" width="58" height="150"/>
+      <rect class="road" x="491" y="0" width="58" height="150"/>
+      <rect class="road" x="761" y="0" width="58" height="150"/>
+      <rect class="band" x="60" y="49" width="900" height="52"/>
+      <line class="mark" x1="0" y1="75" x2="960" y2="75"/>
+      <rect class="road" x="221" y="46" width="58" height="58"/>
+      <rect class="road" x="491" y="46" width="58" height="58"/>
+      <rect class="road" x="761" y="46" width="58" height="58"/>
+      <rect fill="url(#hatch)" x="221" y="46" width="58" height="58"/>
+      <rect fill="url(#hatch)" x="491" y="46" width="58" height="58"/>
+      <rect fill="url(#hatch)" x="761" y="46" width="58" height="58"/>
+      <circle class="lamp-g" cx="212" cy="38" r="5"/><circle class="lamp-r" cx="288" cy="18" r="5"/>
+      <circle class="lamp-g" cx="482" cy="38" r="5"/><circle class="lamp-r" cx="558" cy="18" r="5"/>
+      <circle class="lamp-g" cx="752" cy="38" r="5"/><circle class="lamp-r" cx="828" cy="18" r="5"/>
+      <rect class="veh" x="253" y="14" width="14" height="24" rx="3"/>
+      <rect class="veh-b" x="523" y="14" width="14" height="24" rx="3"/>
+      <rect class="veh" x="793" y="14" width="14" height="24" rx="3"/>
+      <rect class="veh-b" x="233" y="112" width="14" height="24" rx="3"/>
+      <rect class="veh" x="503" y="112" width="14" height="24" rx="3"/>
+      <rect class="veh-b" x="773" y="112" width="14" height="24" rx="3"/>
+      <text class="t-sm t-acc" x="298" y="134" style="font-weight:700">every light ahead is green</text>
+      <g class="ambulance">
+        <rect class="amb" x="0" y="50" width="46" height="20" rx="4"/>
+        <rect class="cross" x="14" y="58" width="14" height="4"/>
+        <rect class="cross" x="19" y="53" width="4" height="14"/>
+        <circle class="lamp-r" cx="38" cy="54" r="3"/>
+        <circle class="bar-blue" cx="38" cy="66" r="3"/>
+      </g>
+    </svg>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="toc" aria-label="Chapters">
+    <h2>Chapters</h2>
+    <ol>
+      <li><a href="#problem">The problem we picked</a></li>
+      <li><a href="#tour">What the app does</a></li>
+      <li><a href="#big-picture">The big picture</a></li>
+      <li><a href="#world">Roads and junctions</a></li>
+      <li><a href="#vehicles">A vehicle's life</a></li>
+      <li><a href="#signals">Traffic signals</a></li>
+      <li><a href="#emergency">Emergency vehicles</a></li>
+      <li><a href="#concurrency">Making threads cooperate</a></li>
+      <li><a href="#time">Time and the life of a run</a></li>
+      <li><a href="#database">Saving it all in MySQL</a></li>
+      <li><a href="#files">Files, serialization, exceptions</a></li>
+      <li><a href="#swing">The Swing interface</a></li>
+      <li><a href="#stats">Measuring the traffic</a></li>
+      <li><a href="#tests">Proving it works</a></li>
+      <li><a href="#syllabus">The syllabus, unit by unit</a></li>
+      <li><a href="#viva">Questions you may be asked</a></li>
+      <li><a href="#limits">Limits and what next</a></li>
+    </ol>
+  </nav>
+
+  <article>
+
+    <!-- ===================================================== 1 -->
+    <h2 id="problem">The problem we picked</h2>
+    <p class="drop">A siren does not turn a red light green. An ambulance that reaches a junction still waits for the signal, and behind a queue it waits even longer. In a busy city a handful of those waits add up to minutes, and for a patient or a fire those minutes matter. Some cities handle the worst cases by hand. For an organ transport, police stand at every junction on the route and open it just before the vehicle arrives. The idea has a name, a <strong>green corridor</strong>, and it works because the junctions are warned early enough to finish changing their lights.</p>
+    <p>Our project asks a plain question. If every signal on the route knew an ambulance was coming, how much time would it save, and what would that cost everybody else? You cannot answer that on a real road, so we built a road in software and ran the experiment on it.</p>
+
+    <h3>Three ways to treat an ambulance</h3>
+    <p>The simulator runs the same traffic under three rules and measures the difference.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Mode</th><th>Who knows, and when</th><th>What the junction does</th></tr></thead>
+      <tbody>
+        <tr><td>No priority</td><td>Nobody. The ambulance is just another vehicle.</td><td>Keeps its normal cycle. The ambulance queues at red like everyone else.</td></tr>
+        <tr><td>Local sensor</td><td>A detector 110 px (about 18 m) before each stop line sees the ambulance.</td><td>Starts changing its lights only when the ambulance is already almost there.</td></tr>
+        <tr><td>Green corridor</td><td>Every junction on the route is told when the ambulance is dispatched, about 5 s before it reaches the map.</td><td>Finishes the light change early, so the queue has cleared and the light is green on arrival.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Words used in this page</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Term</th><th>Meaning here</th></tr></thead>
+      <tbody>
+        <tr><td>Junction</td><td>A crossing of the main road (east-west) with a cross street (north-south). A map has one to three.</td></tr>
+        <tr><td>Phase</td><td>One step of a signal's cycle, such as "main road green" or "all red".</td></tr>
+        <tr><td>Pre-emption</td><td>A signal interrupting its normal cycle to serve an emergency vehicle.</td></tr>
+        <tr><td>Delay</td><td>The extra time a vehicle needed compared with driving the same road empty with no lights.</td></tr>
+        <tr><td>Stop line</td><td>The painted line where vehicles must stop for a red light, 16 px before the junction box.</td></tr>
+        <tr><td>Junction box</td><td>The square where the two roads overlap. Two crossing vehicles must never be inside it together.</td></tr>
+        <tr><td>Throughput</td><td>Vehicles that finished crossing the map per simulated minute.</td></tr>
+        <tr><td>Thread</td><td>One independent line of execution inside the Java program. Here, one per vehicle and one per signal.</td></tr>
+      </tbody>
+    </table></div>
+
+    <!-- ===================================================== 2 -->
+    <h2 id="tour">What the app does</h2>
+    <p>The program is one window with four tabs. You pick a scenario, press Start, and watch roughly a minute of city traffic run in real time while numbers update beside it.</p>
+    <figure>
+      <img src="screenshots/02-traffic.png" alt="The Live Simulation tab showing three junctions, queued vehicles, live statistics on the right and an event log below" width="1500" height="900">
+      <figcaption>The Live Simulation tab. The map is drawn about 30 times a second. The tiles on the right and the junction list are refreshed four times a second. The log at the bottom records every pre-emption.</figcaption>
+    </figure>
+    <ul>
+      <li><strong>Live Simulation.</strong> The animated map. Start, pause, stop and change the speed from x1 to x8. Send ambulances and fire engines by button, key or by clicking a road entry. Hover any vehicle to see its thread. Click a junction to switch its light by hand, as traffic police would.</li>
+      <li><strong>Thread Monitor.</strong> A table of every thread in the run with its life-cycle state, priority and current activity.</li>
+      <li><strong>Scenarios.</strong> Create, edit, copy and delete traffic situations stored in MySQL. Export one to a file and import it on another computer.</li>
+      <li><strong>Reports.</strong> Every saved run, details per vehicle type, a CSV export and a chart comparing the three priority modes.</li>
+    </ul>
+    <div class="pair">
+      <figure>
+        <img src="screenshots/05-thread-monitor.png" alt="The Thread Monitor tab listing every thread with its state" width="1500" height="900">
+        <figcaption>Thread Monitor. Orange rows are cars waiting at red lights.</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/09-reports.png" alt="The Reports tab with saved runs and a comparison bar chart" width="1500" height="900">
+        <figcaption>Reports. The chart comes from a stored procedure.</figcaption>
+      </figure>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Key</th><th>Action</th><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>Enter / F5</td><td>Start the selected scenario</td><td>A / F8</td><td>Ambulance to the hospital</td></tr>
+        <tr><td>Space / F6</td><td>Pause or resume</td><td>F / F9</td><td>Fire engine on a cross street</td></tr>
+        <tr><td>Esc / F7</td><td>Stop the run</td><td>1 2 3 4</td><td>Speed x1, x2, x4, x8</td></tr>
+        <tr><td>H</td><td>Help over the map</td><td>F1</td><td>List of controls</td></tr>
+      </tbody>
+    </table></div>
+    <div class="call idea">
+      <span class="tag">Try it in two minutes</span>
+      <ol>
+        <li>Pick <strong>Morning Peak - No Priority</strong> and press Start. Press A and watch the ambulance queue at red lights.</li>
+        <li>Stop, pick <strong>Morning Peak - Green Corridor</strong> and repeat. A green band appears ahead of the ambulance, the junctions show PRIORITY, and cars pull over.</li>
+        <li>Hover the ambulance. The tooltip shows its thread name, its state and priority 10.</li>
+      </ol>
+    </div>
+
+    <!-- ===================================================== 3 -->
+    <h2 id="big-picture">The big picture</h2>
+    <p>Five ideas shape the whole program. Once you hold them, every class has an obvious place.</p>
+    <ol>
+      <li><strong>One object for every real thing.</strong> A <code>Vehicle</code>, a <code>Lane</code>, a <code>Junction</code> and a <code>SignalController</code> each mirror something on a real road.</li>
+      <li><strong>One thread for every active thing.</strong> Vehicles and signals decide for themselves, so each runs its own loop.</li>
+      <li><strong>Shared data is guarded.</strong> Lanes, junction boxes and counters are touched by many threads, so access goes through <code>synchronized</code> methods.</li>
+      <li><strong>The screen only reads.</strong> The Swing code takes snapshots on timers and never decides anything about traffic.</li>
+      <li><strong>The database never slows the traffic.</strong> Threads drop events into a buffer, and one background thread writes them to MySQL.</li>
+    </ol>
+
+    <div class="diagram">
+      <svg viewBox="0 0 860 392" role="img" aria-label="Four layers: user interface, engine, vehicles roads and model, and persistence. Commands flow down, snapshots flow up.">
+        <g>
+          <rect class="box-blue" x="0" y="8" width="700" height="84" rx="4"/>
+          <text class="t-title" x="16" y="32">ui</text><text class="t-sm t-muted" x="16" y="50">Swing, event dispatch thread</text>
+          <g class="t-mono">
+            <rect class="chip" x="180" y="18" width="164" height="26" rx="3"/><text x="190" y="35">MainFrame</text>
+            <rect class="chip" x="352" y="18" width="164" height="26" rx="3"/><text x="362" y="35">SimulationCanvas</text>
+            <rect class="chip" x="524" y="18" width="166" height="26" rx="3"/><text x="534" y="35">LiveSimulationPanel</text>
+            <rect class="chip" x="180" y="54" width="164" height="26" rx="3"/><text x="190" y="71">ThreadMonitorPanel</text>
+            <rect class="chip" x="352" y="54" width="164" height="26" rx="3"/><text x="362" y="71">ScenarioManagerPanel</text>
+            <rect class="chip" x="524" y="54" width="166" height="26" rx="3"/><text x="534" y="71">ReportsPanel</text>
+          </g>
+        </g>
+        <g>
+          <rect class="box-acc" x="0" y="106" width="700" height="84" rx="4"/>
+          <text class="t-title" x="16" y="130">engine</text><text class="t-sm t-muted" x="16" y="148">threads and traffic rules</text>
+          <g class="t-mono">
+            <rect class="chip" x="180" y="116" width="164" height="26" rx="3"/><text x="190" y="133">SimulationEngine</text>
+            <rect class="chip" x="352" y="116" width="164" height="26" rx="3"/><text x="362" y="133">SignalController</text>
+            <rect class="chip" x="524" y="116" width="166" height="26" rx="3"/><text x="534" y="133">VehicleSpawner</text>
+            <rect class="chip" x="180" y="152" width="164" height="26" rx="3"/><text x="190" y="169">DatabaseLogger</text>
+            <rect class="chip" x="352" y="152" width="164" height="26" rx="3"/><text x="362" y="169">EventBuffer</text>
+            <rect class="chip" x="524" y="152" width="166" height="26" rx="3"/><text x="534" y="169">SimClock</text>
+          </g>
+        </g>
+        <g>
+          <rect class="box-amb" x="0" y="204" width="700" height="84" rx="4"/>
+          <text class="t-title" x="16" y="228">vehicle, road, model</text><text class="t-sm t-muted" x="16" y="246">the shared objects</text>
+          <g class="t-mono">
+            <rect class="chip" x="180" y="214" width="164" height="26" rx="3"/><text x="190" y="231">Vehicle (Runnable)</text>
+            <rect class="chip" x="352" y="214" width="164" height="26" rx="3"/><text x="362" y="231">EmergencyVehicle</text>
+            <rect class="chip" x="524" y="214" width="166" height="26" rx="3"/><text x="534" y="231">Scenario</text>
+            <rect class="chip" x="180" y="250" width="164" height="26" rx="3"/><text x="190" y="267">Lane</text>
+            <rect class="chip" x="352" y="250" width="164" height="26" rx="3"/><text x="362" y="267">Junction</text>
+            <rect class="chip" x="524" y="250" width="166" height="26" rx="3"/><text x="534" y="267">RoadNetwork</text>
+          </g>
+        </g>
+        <g>
+          <rect class="box" x="0" y="302" width="700" height="84" rx="4"/>
+          <text class="t-title" x="16" y="326">db, io</text><text class="t-sm t-muted" x="16" y="344">MySQL and files</text>
+          <g class="t-mono">
+            <rect class="chip" x="180" y="312" width="164" height="26" rx="3"/><text x="190" y="329">Database (JDBC)</text>
+            <rect class="chip" x="352" y="312" width="164" height="26" rx="3"/><text x="362" y="329">RunDao</text>
+            <rect class="chip" x="524" y="312" width="166" height="26" rx="3"/><text x="534" y="329">ScenarioRepository</text>
+            <rect class="chip" x="180" y="348" width="164" height="26" rx="3"/><text x="190" y="365">ScenarioFiles</text>
+            <rect class="chip" x="352" y="348" width="164" height="26" rx="3"/><text x="362" y="365">RunLogWriter</text>
+            <rect class="chip" x="524" y="348" width="166" height="26" rx="3"/><text x="534" y="365">green_corridor.sql</text>
+          </g>
+        </g>
+        <line class="ln-acc" x1="740" y1="20" x2="740" y2="372" marker-end="url(#ah)"/>
+        <text class="t-sm t-acc" transform="translate(728 196) rotate(-90)" style="text-anchor:middle">commands: start, stop, dispatch</text>
+        <line class="ln" x1="810" y1="372" x2="810" y2="20" marker-end="url(#ah)"/>
+        <text class="t-sm" transform="translate(798 196) rotate(-90)" style="text-anchor:middle">read-only snapshots, 4 to 30 times a second</text>
+      </svg>
+    </div>
+
+    <h3>Where the code lives</h3>
+    <p>Everything is under <code>app/src/main/java/com/greencorridor/</code>. Each folder is a Java package with one job.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Package</th><th>Contains</th><th class="num">Lines</th></tr></thead>
+      <tbody>
+        <tr><td>ui</td><td>The window, the map canvas, the four tabs, dialogs, colours and fonts</td><td class="num">3,275</td></tr>
+        <tr><td>engine</td><td>The simulation: engine, signal controllers, spawner, clock, event buffer, statistics, database logger</td><td class="num">1,595</td></tr>
+        <tr><td>vehicle</td><td>The vehicle class tree, the factory and the interfaces they implement</td><td class="num">974</td></tr>
+        <tr><td>model</td><td>Plain data: scenario, trip record, enums, run summary</td><td class="num">847</td></tr>
+        <tr><td>db</td><td>JDBC code: connection, repositories, DAO, script installer</td><td class="num">828</td></tr>
+        <tr><td>road</td><td>Lane, stop line, junction and the road network</td><td class="num">606</td></tr>
+        <tr><td>io</td><td>Scenario files, CSV export, run log files</td><td class="num">185</td></tr>
+        <tr><td>exception</td><td>Six custom exceptions</td><td class="num">89</td></tr>
+        <tr><td>Main.java</td><td>Starts Swing</td><td class="num">38</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Who talks to whom</h3>
+    <p>This is the thread map of a running simulation. Boxes in the top two rows are threads. Boxes in the third row are shared objects that threads compete for. The bottom row is the path from the simulation to the database.</p>
+    <div class="diagram">
+      <svg viewBox="0 0 840 430" role="img" aria-label="Thread map: the Swing thread reads snapshots, the spawner creates vehicle threads, vehicles use lanes and junction boxes and wait on signal controllers, and vehicles put events into a buffer that the database logger drains into MySQL.">
+        <rect class="box-blue" x="10" y="10" width="190" height="52" rx="4"/>
+        <text class="t-md" x="22" y="32">Swing event thread</text><text class="t-sm t-muted" x="22" y="50">paints 30 times a second</text>
+
+        <rect class="box-acc" x="330" y="10" width="150" height="52" rx="4"/>
+        <text class="t-md" x="342" y="32">Spawner</text><text class="t-sm t-muted" x="342" y="50">extends Thread</text>
+
+        <rect class="box-acc" x="250" y="120" width="300" height="62" rx="4"/>
+        <text class="t-md" x="262" y="143">Vehicle threads, 30 to 80</text><text class="t-sm t-muted" x="262" y="161">Car-12, Bus-13, Ambulance-14 ...</text><text class="t-sm t-muted" x="262" y="175">Runnable, priority 5 (ambulance 10)</text>
+
+        <rect class="box-acc" x="600" y="120" width="220" height="62" rx="4"/>
+        <text class="t-md" x="612" y="143">Signal-J1 to J3</text><text class="t-sm t-muted" x="612" y="161">Runnable, priority 7</text><text class="t-sm t-muted" x="612" y="175">one controller per junction</text>
+
+        <rect class="box-amb" x="250" y="236" width="140" height="52" rx="4"/>
+        <text class="t-md" x="262" y="258">Lane</text><text class="t-sm t-muted" x="262" y="276">synchronized lists</text>
+        <rect class="box-amb" x="410" y="236" width="140" height="52" rx="4"/>
+        <text class="t-md" x="422" y="258">Junction box</text><text class="t-sm t-muted" x="422" y="276">synchronized</text>
+        <rect class="box-amb" x="600" y="236" width="220" height="52" rx="4"/>
+        <text class="t-md" x="612" y="258">Signal monitor</text><text class="t-sm t-muted" x="612" y="276">wait() / notifyAll()</text>
+
+        <rect class="box-acc" x="250" y="350" width="190" height="52" rx="4"/>
+        <text class="t-md" x="262" y="372">EventBuffer</text><text class="t-sm t-muted" x="262" y="390">bounded, wait / notifyAll</text>
+        <rect class="box-acc" x="490" y="350" width="130" height="52" rx="4"/>
+        <text class="t-md" x="502" y="372">DB-Logger</text><text class="t-sm t-muted" x="502" y="390">priority 1</text>
+        <rect class="box" x="670" y="350" width="150" height="52" rx="4"/>
+        <text class="t-md" x="682" y="372">MySQL</text><text class="t-sm t-muted" x="682" y="390">and a log file</text>
+
+        <line class="ln" x1="405" y1="62" x2="405" y2="118" marker-end="url(#ah)"/>
+        <text class="t-sm" x="414" y="94">creates, starts</text>
+
+        <line class="ln" x1="320" y1="182" x2="320" y2="234" marker-end="url(#ah)"/>
+        <line class="ln" x1="480" y1="182" x2="480" y2="234" marker-end="url(#ah)"/>
+        <text class="t-sm t-end" x="312" y="214">move</text>
+        <text class="t-sm" x="488" y="214">tryEnterBox</text>
+
+        <line class="ln" x1="550" y1="170" x2="630" y2="234" marker-start="url(#ah)" marker-end="url(#ah)"/>
+        <text class="t-sm" x="600" y="214" style="text-anchor:end" transform="translate(-6 0)">wait()</text>
+
+        <line class="ln" x1="710" y1="182" x2="710" y2="234" marker-end="url(#ah)"/>
+        <text class="t-sm" x="720" y="214">setPhase</text>
+
+        <path class="ln-d" d="M105 62 V262 H248" marker-end="url(#ah)"/>
+        <text class="t-sm t-muted" x="115" y="150">read-only</text><text class="t-sm t-muted" x="115" y="165">snapshots</text>
+
+        <path class="ln-acc" d="M250 151 H226 V376 H248" marker-end="url(#ah)"/>
+        <text class="t-sm t-acc t-end" x="218" y="330">put(trip)</text>
+        <text class="t-sm t-acc t-end" x="218" y="345">put(pre-emption)</text>
+
+        <line class="ln-acc" x1="440" y1="376" x2="488" y2="376" marker-end="url(#ah)"/>
+        <text class="t-sm t-acc t-ctr" x="464" y="342">take()</text>
+        <line class="ln-acc" x1="620" y1="376" x2="668" y2="376" marker-end="url(#ah)"/>
+        <text class="t-sm t-acc t-ctr" x="644" y="342">batch</text>
+        <text class="t-sm t-acc t-ctr" x="644" y="356">INSERT</text>
+      </svg>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Thread</th><th>How many</th><th>Created with</th><th class="num">Priority</th><th>Job</th></tr></thead>
+      <tbody>
+        <tr><td>Swing event thread</td><td>1</td><td>Swing itself</td><td class="num">-</td><td>Draw the map, handle clicks and keys, refresh tables</td></tr>
+        <tr><td>Vehicle threads</td><td>30 to 80</td><td><code>Vehicle implements Runnable</code></td><td class="num">5 (emergency 10)</td><td>Move one vehicle, one small step at a time</td></tr>
+        <tr><td>Signal-J1 to J3</td><td>1 to 3</td><td><code>SignalController implements Runnable</code></td><td class="num">7</td><td>Run the light cycle and serve emergency requests</td></tr>
+        <tr><td>Spawner</td><td>1</td><td><code>extends Thread</code></td><td class="num">5</td><td>Random arrivals, start threads of vehicles that fit on the road</td></tr>
+        <tr><td>Supervisor</td><td>1</td><td>Inner class, <code>extends Thread</code></td><td class="num">6</td><td>End the run when the scenario's time is up</td></tr>
+        <tr><td>DB-Logger</td><td>1</td><td><code>extends Thread</code></td><td class="num">1</td><td>Take events from the buffer and save them</td></tr>
+        <tr><td>RunFinisher</td><td>1, short-lived</td><td>Anonymous <code>Runnable</code></td><td class="num">5</td><td>Shut a run down without freezing the window</td></tr>
+        <tr><td>DB-Connect, DB-Test, DB-Install</td><td>short-lived</td><td>Lambda <code>Runnable</code></td><td class="num">5</td><td>Network work kept off the Swing thread</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>The life of one run, in order</h3>
+    <ol>
+      <li>You press Start. <code>LiveSimulationPanel.startRun()</code> builds a <code>SimulationEngine</code> from the chosen scenario, signal mode and priority mode.</li>
+      <li>The engine's constructor validates the scenario, copies it, parses the vehicle mix, builds the <code>RoadNetwork</code> and creates one <code>SignalController</code> per junction.</li>
+      <li><code>engine.start()</code> calls the stored procedure <code>sp_start_run</code> to get a run number, then starts the logger, the signal threads, the spawner and the supervisor.</li>
+      <li>The spawner creates vehicles at random. Each vehicle waits in its lane's entry queue as a thread that has not started. When there is room, the spawner starts it.</li>
+      <li>Every vehicle thread loops: wait if paused, take a step, sleep 30 ms. Each signal thread loops the same way.</li>
+      <li>Finished vehicles report a <code>TripRecord</code>. The statistics collector counts it and the event buffer carries it to the database logger.</li>
+      <li>Time runs out (the supervisor calls <code>stop(true)</code>) or you press Stop (<code>stop(false)</code>). A <code>RunFinisher</code> thread interrupts everything, waits for the threads to end, flushes the buffer and calls <code>sp_finish_run</code>.</li>
+      <li>A summary comes back to the Swing thread and the results dialog opens.</li>
+    </ol>
+
+    <!-- ===================================================== 4 -->
+    <h2 id="world">Roads and junctions</h2>
+    <p>A traffic simulation looks two-dimensional, but the code treats every lane as a one-dimensional line. That one decision removes most of the geometry from the logic.</p>
+
+    <h3>One number for every position</h3>
+    <p>Each <code>Lane</code> has a start point and a direction. A vehicle's place is described by a single number <code>s</code>, the distance in pixels from the lane's start. The vehicle stores <code>frontS</code>, and its back is simply <code>rearS = frontS - length</code>. When the screen needs real coordinates, the lane converts: <code>x = startX + dx * s</code> and <code>y = startY + dy * s</code>, where <code>(dx, dy)</code> is the direction's unit vector. Checking whether two vehicles overlap becomes comparing two numbers.</p>
+    <div class="diagram">
+      <svg viewBox="0 0 800 276" role="img" aria-label="Lane coordinates for the first junction on the eastbound lane: a car and a truck queued before the stop line at s equals 312, then the junction box from 328 to 392.">
+        <rect class="road" x="30" y="90" width="720" height="44"/>
+        <rect x="383" y="52" width="230" height="120" fill="url(#hatch)"/>
+        <rect x="383" y="52" width="230" height="120" fill="none" stroke="var(--amber)" stroke-width="1.5"/>
+        <rect class="stopln" x="323" y="90" width="4" height="44"/>
+        <rect class="veh" x="181" y="97" width="144" height="30" rx="4"/>
+        <text class="t-md t-ctr" x="253" y="117">Truck</text>
+        <rect class="veh-b" x="62" y="97" width="94" height="30" rx="4"/>
+        <text class="t-md t-ctr" x="109" y="117">Car</text>
+        <text class="t-sm t-ctr" x="253" y="82">front s = 312, rear s = 272</text>
+        <text class="t-sm t-ctr" x="109" y="82">front 265, rear 239</text>
+        <line class="ln-red" x1="156" y1="150" x2="181" y2="150"/>
+        <text class="t-sm t-red t-ctr" x="168" y="166">7 px gap</text>
+        <text class="t-sm t-ctr" x="498" y="44">junction box (critical section)</text>
+        <text class="t-sm t-ctr" x="325" y="44">stop line</text>
+        <line class="grid" x1="325" y1="48" x2="325" y2="88"/>
+        <line class="ln" x1="30" y1="200" x2="750" y2="200" marker-end="url(#ah)"/>
+        <g class="t-sm t-ctr">
+          <line class="ln" x1="62" y1="196" x2="62" y2="204"/><text x="62" y="220">239</text>
+          <line class="ln" x1="325" y1="196" x2="325" y2="204"/><text x="325" y="220">312</text>
+          <line class="ln" x1="383" y1="196" x2="383" y2="204"/><text x="383" y="220">328</text>
+          <line class="ln" x1="498" y1="196" x2="498" y2="204"/><text x="498" y="220">360</text>
+          <line class="ln" x1="613" y1="196" x2="613" y2="204"/><text x="613" y="220">392</text>
+        </g>
+        <text class="t-sm t-muted" x="30" y="262">lane position s, in pixels from the lane start (drawn to scale). Entry margin 60 px, stop margin 16 px, half road 32 px.</text>
+        <text class="t-sm t-muted t-ctr" x="354" y="236" style="font-size:10.5px">16 px</text>
+        <text class="t-sm t-muted t-ctr" x="440" y="236" style="font-size:10.5px">32 px</text>
+        <text class="t-sm t-muted t-ctr" x="555" y="236" style="font-size:10.5px">32 px</text>
+        <rect class="chip" x="446" y="56" width="104" height="18" rx="3"/><text class="t-sm t-ctr" x="498" y="69" style="fill:var(--amber);font-weight:700">junction centre</text>
+      </svg>
+    </div>
+    <p>The numbers are real. For the first junction on the eastbound lane, the lane starts 60 px outside the map, so the junction centre at world x = 300 is at <code>s = 360</code>. The box spans 32 px either side (<code>s = 328</code> to <code>392</code>), and the stop line sits <code>STOP_MARGIN = 16</code> px before the box at <code>s = 312</code>. The unit test <code>LaneTest.networkGeometry</code> checks these values.</p>
+
+    <h3>The map</h3>
+    <p>The world is 1200 by 640 pixels, and 6 px equal one metre, so the map is a 200 m stretch of road. The main road runs east-west at <code>y = 320</code> and is 64 px wide. With <code>n</code> junctions, junction <code>i</code> is at <code>x = 1200 * (i + 1) / (n + 1)</code>, which gives 300, 600 and 900 for three. Traffic keeps left, as on Indian roads: eastbound vehicles use the northern half of the road and southbound vehicles use the eastern half. Each road has one lane per direction, so three junctions give <code>2 + 2 * 3 = 8</code> lanes.</p>
+    <p>A lane remembers its stop lines in order. The main road's lanes cross every junction and so have one stop line per junction. A cross street's lane crosses only its own junction and has one.</p>
+
+    <h3>What a lane keeps</h3>
+    <ul>
+      <li><code>vehicles</code>, a <code>LinkedList</code> of the vehicles on the road, front-most first. The vehicle ahead of you is the previous element. A linked list suits this because vehicles leave from anywhere in the list and join at the end.</li>
+      <li><code>entryQueue</code>, a second <code>LinkedList</code> of vehicles that have arrived but cannot enter yet because the start of the lane is busy. Their threads exist but have not been started. If this queue reaches 12 vehicles, new arrivals are turned away and counted. Emergency vehicles are added with <code>addFirst</code>, so they jump the queue and are never turned away.</li>
+    </ul>
+    <p>Both lists are touched by several threads, so every method that reads or changes them is <code>synchronized</code> on the lane. Chapter 8 explains why that is enough.</p>
+
+    <h3>The junction box</h3>
+    <p>The box is the one place where a collision can happen: a car crossing east-west while another crosses north-south. The junction keeps a count of vehicles inside, one slot per axis, and one method both checks and updates it. Because the whole method is <code>synchronized</code>, two threads can never both see "empty" and both walk in.</p>
+    <div class="code"><div class="cap"><span>road/Junction.java</span><span>critical section</span></div><pre><code class="java">public synchronized boolean tryEnterBox(Axis axis) {
+    if (boxOccupancy[axis.other().ordinal()] &gt; 0) {
+        return false;                 // crossing traffic is still inside
+    }
+    boxOccupancy[axis.ordinal()]++;   // same direction may share the box
+    return true;
+}
+
+public synchronized void exitBox(Axis axis) {
+    if (boxOccupancy[axis.ordinal()] &gt; 0) {
+        boxOccupancy[axis.ordinal()]--;
+    }
+}</code></pre></div>
+    <p>The signal normally keeps the two roads apart anyway. The box check is a second safety net that holds even if the signal logic had a bug, and the safety checker in Chapter 14 confirms it never fired.</p>
+
+    <!-- ===================================================== 5 -->
+    <h2 id="vehicles">A vehicle's life</h2>
+    <p>Every vehicle on screen is an object of a class in the <code>vehicle</code> package, and every one of them runs its own thread. Reading <code>Vehicle.java</code> is the fastest way to understand the whole project, so this chapter goes through it slowly.</p>
+
+    <h3>The class tree</h3>
+    <div class="code"><div class="cap"><span>vehicle/</span><span>inheritance and interfaces</span></div><pre><code>Vehicle                    abstract, implements Runnable, Drawable, Monitorable
+ |-- Car, Bike, AutoRickshaw, Bus, Truck
+ `-- EmergencyVehicle      abstract, implements EmergencyResponder
+      |-- Ambulance        final
+      `-- FireEngine       final
+
+interface EmergencyResponder extends Prioritized, Drawable</code></pre></div>
+    <p><code>Vehicle</code> holds everything the vehicles share: the movement loop, braking, junction rules and drawing. A subclass supplies only what makes it different, through the constructor and a few small methods.</p>
+    <div class="code"><div class="cap"><span>vehicle/Car.java</span><span>constructor and overriding</span></div><pre><code class="java">public class Car extends Vehicle {
+    public Car() {
+        super(26, 13, 110, 75);        // length, width, top speed, acceleration
+        this.color = PALETTE[number % PALETTE.length];
+    }
+
+    @Override public String getTypeCode()    { return "CAR"; }
+    @Override public String getDisplayName() { return "Car"; }
+
+    @Override
+    protected void drawBody(Graphics2D g, long animMillis) {
+        fillBody(g, color, 7);          // each subclass paints itself
+        // ... windscreen and rear window
+    }
+}</code></pre></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Type</th><th class="num">Length x width</th><th class="num">Top speed</th><th class="num">Acceleration</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Car</td><td class="num">26 x 13 px (4.3 m)</td><td class="num">66 km/h</td><td class="num">75 px/s&sup2;</td><td>The default, 45% of the mix</td></tr>
+        <tr><td>Bike</td><td class="num">14 x 6 px (2.3 m)</td><td class="num">69 km/h</td><td class="num">95 px/s&sup2;</td><td>Small and quick to accelerate</td></tr>
+        <tr><td>Auto-rickshaw</td><td class="num">19 x 12 px (3.2 m)</td><td class="num">51 km/h</td><td class="num">65 px/s&sup2;</td><td>Yellow body, green canopy</td></tr>
+        <tr><td>Bus</td><td class="num">46 x 15 px (7.7 m)</td><td class="num">51 km/h</td><td class="num">40 px/s&sup2;</td><td>Long, slow to pick up speed</td></tr>
+        <tr><td>Truck</td><td class="num">40 x 15 px (6.7 m)</td><td class="num">45 km/h</td><td class="num">35 px/s&sup2;</td><td>Slowest of all</td></tr>
+        <tr><td>Ambulance</td><td class="num">30 x 14 px (5.0 m)</td><td class="num">90 km/h</td><td class="num">110 px/s&sup2;</td><td>Thread priority 10, urgency 3</td></tr>
+        <tr><td>Fire engine</td><td class="num">40 x 15 px (6.7 m)</td><td class="num">81 km/h</td><td class="num">85 px/s&sup2;</td><td>Thread priority 10, urgency 2</td></tr>
+      </tbody>
+    </table></div>
+    <p>Speeds are stored in pixels per second. Dividing by 6 gives metres per second, and multiplying by 3.6 gives km/h, so the factor is 0.6. The tooltip and Thread Monitor use that conversion.</p>
+
+    <h3>From arrival to exit</h3>
+    <ol>
+      <li><strong>Created.</strong> The spawner picks a type with <code>VehicleFactory.randomFromMix</code>, which walks the cumulative weights of the scenario's vehicle mix. The vehicle gets a <code>Thread</code> object, but the thread is not started. In Java terms the thread is in the <strong>NEW</strong> state.</li>
+      <li><strong>Queued.</strong> It goes into the entry queue of its lane. If the queue already holds 12, it is turned away.</li>
+      <li><strong>Admitted.</strong> Each tick the spawner asks every lane <code>admitNext()</code>. If the last vehicle on the road has cleared the first 8 px, the front of the queue is placed on the lane at 80% of its top speed and the spawner calls <code>start()</code> on its thread.</li>
+      <li><strong>Running.</strong> The thread executes <code>run()</code> until the vehicle is off the far end.</li>
+      <li><strong>Done.</strong> The <code>finally</code> block removes the vehicle from the lane and the junction box. A <code>TripRecord</code> goes to the statistics and the event buffer. The thread ends (<strong>TERMINATED</strong>).</li>
+    </ol>
+
+    <h3>The thread's main loop</h3>
+    <div class="code"><div class="cap"><span>vehicle/Vehicle.java</span><span>run() is final: subclasses cannot break the loop</span></div><pre><code class="java">@Override
+public final void run() {
+    SimClock clock = engine.getClock();
+    lastUpdateMs = clock.now();
+    entrySimMs = lastUpdateMs;
+    long exitMs = -1;
+    try {
+        while (engine.isRunning()) {
+            clock.awaitIfPaused();             // parks here while the run is paused
+            long now = clock.now();
+            if (step(now)) {                   // true when the vehicle left the map
+                exitMs = now;
+                break;
+            }
+            Thread.sleep(SimConfig.TICK_MS);   // TIMED_WAITING until the next tick (30 ms)
+        }
+    } catch (InterruptedException e) {
+        // The engine interrupts every vehicle when the run stops: just end the thread.
+    } finally {
+        long now = clock.now();
+        leaveBox(now);
+        lane.leave(this);
+        exited = true;
+        onRemoved(now);
+        engine.getRegistry().markTerminated(Thread.currentThread());
+    }
+    if (exitMs &gt;= 0) {
+        engine.vehicleFinished(this, buildTrip(exitMs));
+    }
+}</code></pre></div>
+    <p>Three details matter. The method is <code>final</code> so no subclass can replace the loop and break the safety rules. The <code>InterruptedException</code> is how the engine stops a thread that is asleep or waiting, and it is treated as a normal exit. The <code>finally</code> block runs however the thread ends, so a vehicle can never leave a ghost in a lane or a stuck count in a junction box.</p>
+
+    <h3>One step, in eight moves</h3>
+    <p>The private method <code>step(now)</code> moves the vehicle by one small slice of time. It never moves further than the situation allows.</p>
+    <h4>1 &middot; Work out the time slice</h4>
+    <p><code>dt = min(elapsed, 250 ms)</code>. The cap means a thread that was starved of CPU for a moment does not teleport forward when it wakes. It is also the reason x8 is the top speed, which Chapter 9 explains.</p>
+    <h4>2 &middot; Find how far the road allows</h4>
+    <div class="code"><div class="cap"><span>vehicle/Vehicle.java</span><span>step(): the two limits</span></div><pre><code class="java">// First limit: the vehicle ahead.
+Vehicle leader = lane.leaderOf(this);
+double allowed = leader == null ? Double.MAX_VALUE
+        : leader.getRearS() - frontS - SimConfig.MIN_GAP;      // keep a 7 px gap
+
+// Second limit: the next stop line, if the signal (or a full exit) says stop.
+StopLine next = lane.nextStopLine(frontS);
+if (next != null &amp;&amp; next == boxStop) {
+    next = null;                    // already inside that junction: committed
+}
+boolean held = false;
+if (next != null) {
+    double dist = next.getStopS() - frontS;
+    if (dist &lt; allowed &amp;&amp; !mayCross(next, dist, leader)) {
+        allowed = dist;             // stop at the line
+        held = true;
+    }
+}</code></pre></div>
+    <p><code>allowed</code> is the free distance ahead. It starts as the gap to the leader. If the next stop line is closer and the vehicle may not cross it, <code>allowed</code> shrinks to the distance to that line.</p>
+    <h4>3 &middot; May it cross the stop line?</h4>
+    <div class="code"><div class="cap"><span>vehicle/Vehicle.java</span><span>mayCross()</span></div><pre><code class="java">private boolean mayCross(StopLine next, double dist, Vehicle leader) {
+    if (!next.getJunction().getSignal().mayEnter(next.getAxis(), dist, speed)) {
+        return false;                                   // the light says no
+    }
+    // "Don't block the box": enter only if there is room for us behind the queue
+    // on the far side, otherwise we would get stuck in the middle of the crossing.
+    if (lane.roomBeyond(next, this) &lt; length + SimConfig.MIN_GAP) {
+        return false;
+    }
+    return leader == null
+            || leader.getSpeed() &gt;= SimConfig.CRAWL_SPEED
+            || leader.getRearS() - next.getBoxExitS() &gt;= length + SimConfig.MIN_GAP;
+}</code></pre></div>
+    <ul>
+      <li><strong>Green:</strong> go. <strong>Red:</strong> stop. <strong>Yellow:</strong> keep going only if the vehicle is moving and so close that it could not stop in time, defined as being within <code>0.6 s</code> of the line at its current speed.</li>
+      <li><strong>Don't block the box.</strong> This is the rule real drivers follow at a yellow-hatched junction. A vehicle enters only when there is space for it on the far side. Without it, queues spill into the junction and block the cross street, and the whole map locks up. <code>Lane.roomBeyond</code> measures the space between the junction's far edge and the next stop line, minus the length of every vehicle already there. If traffic beyond is still flowing and the next light is green, the answer is "unlimited".</li>
+    </ul>
+    <h4>4 &middot; Choose a speed</h4>
+    <div class="code"><div class="cap"><span>vehicle/Vehicle.java</span><span>targetSpeed()</span></div><pre><code class="java">double v = Math.min(maxSpeed, speed + acceleration * dt);       // speed up gently
+// Brake smoothly so we can stop within the allowed distance.
+return Math.min(v, Math.sqrt(2 * SimConfig.BRAKE_DECEL * allowed));</code></pre></div>
+    <p>The second line is school physics. A vehicle slowing at deceleration <code>a</code> over distance <code>d</code> needs <code>v&sup2; = 2ad</code>, so the fastest it may be going with <code>d</code> left is <code>sqrt(2ad)</code>. With <code>a = 170 px/s&sup2;</code>, a car at its top speed of 110 px/s starts slowing when the free distance drops below about 36 px (6 m). Because the limit is recalculated every tick, the car glides to a stop exactly at the line or exactly behind the car in front.</p>
+    <p>A vehicle that is standing waits <code>REACTION_MS = 450</code> ms after the way clears before it moves, like a real driver.</p>
+    <div class="call warn"><span class="tag">Simplification</span><p>170 px/s&sup2; is about 28 m/s&sup2;, far harder than a real car can brake. The constants are tuned to make the animation clear and the queues behave sensibly. They are not engineering values, and the report should say so.</p></div>
+    <h4>5 &middot; Enter the junction box</h4>
+    <p>If this step would carry the front of the vehicle past the stop line, it calls <code>tryEnterBox</code> from Chapter 4. If that returns false, the vehicle is pushed back to the line and counts as held.</p>
+    <h4>6 &middot; Move and record</h4>
+    <p><code>frontS += move</code> and <code>speed = move / dt</code>. A stop is counted once when speed falls below 3 px/s, and it can be counted again only after the vehicle has picked up speed above 9 px/s.</p>
+    <h4>7 &middot; Leave the box</h4>
+    <p>When <code>rearS</code> passes the box's far edge, <code>exitBox</code> is called. For an emergency vehicle this also triggers <code>onLeaveJunction</code>, which gives the junction back (Chapter 7).</p>
+    <h4>8 &middot; Sleep on the signal</h4>
+    <div class="code"><div class="cap"><span>vehicle/Vehicle.java</span><span>step(): waiting at a red light</span></div><pre><code class="java">if (held &amp;&amp; speed &lt; SimConfig.STOPPED_SPEED &amp;&amp; next.getStopS() - frontS &lt; 1.0) {
+    SignalController signal = next.getJunction().getSignal();
+    if (!signal.isGreen(next.getAxis()) &amp;&amp; !yielding) {
+        waitingAtSignal = true;
+        waitingOn = signal;
+        try {
+            signal.awaitGreen(next.getAxis(), this);       // wait() inside
+        } finally {
+            waitingAtSignal = false;
+            waitingOn = null;
+        }
+        startAt = engine.getClock().now() + SimConfig.REACTION_MS;
+    }
+}</code></pre></div>
+    <p>A vehicle that has stopped at a red light has nothing to do until the light changes, so it should not keep waking every 30 ms. It calls <code>awaitGreen</code>, which calls Java's <code>wait()</code>. The thread is now in the <strong>WAITING</strong> state, using no CPU, until the controller calls <code>notifyAll()</code>. Chapter 8 shows both halves.</p>
+
+    <h3>Pulling over for a siren</h3>
+    <p>Ordinary vehicles make room for emergency vehicles. Every step, an ordinary vehicle asks its lane <code>mustGiveWay</code>. If an emergency vehicle is within 110 px behind it, it shifts 10 px toward the left edge at 45 px/s (<code>lateral</code>) and brakes to a stop. The emergency vehicle then drives past in the space that opened up.</p>
+    <p>Making that work needed five small changes in the lane code.</p>
+    <ul>
+      <li>An emergency vehicle's <code>leaderOf</code> skips vehicles that are pulled over, so it does not queue behind them.</li>
+      <li>Ordinary vehicles follow whichever of the passing pair has its rear bumper nearest, so nobody drives into the ambulance.</li>
+      <li>After it passes one, <code>overtakeYielding</code> swaps the two in the lane's list so the list stays in road order.</li>
+      <li><code>roomBeyond</code> ignores pulled-over vehicles when an emergency vehicle asks.</li>
+      <li>A vehicle that is asleep in <code>wait()</code> at a red light must also be able to hear the siren. Emergency vehicles call <code>wakeWaitingVehicles()</code> on the signal ahead, and <code>awaitGreen</code> returns early when <code>mustGiveWay()</code> becomes true.</li>
+    </ul>
+
+    <h3>Measuring a trip</h3>
+    <div class="code"><div class="cap"><span>vehicle/Vehicle.java</span><span>buildTrip()</span></div><pre><code class="java">long startMs = arrivalSimMs &gt;= 0 ? arrivalSimMs : entrySimMs;
+double idealMs = (lane.getLength() + length - startS) / maxSpeed * 1000.0;
+double delaySec = Math.max(0, (exitMs - startMs - idealMs) / 1000.0);
+long queuedMs = entrySimMs - startMs;                // time spent waiting off the map</code></pre></div>
+    <p><strong>Delay</strong> is the actual trip time minus the ideal one, which is the lane length divided by the vehicle's top speed. The clock starts when the vehicle arrives at the edge of the map, not when it gets onto the road, so a long entry queue counts against the junction that caused it.</p>
+
+    <!-- ===================================================== 6 -->
+    <h2 id="signals">Traffic signals</h2>
+    <p>Each junction has a <code>SignalController</code>, a class that implements <code>Runnable</code> and runs on its own thread named <code>Signal-J1</code>, <code>Signal-J2</code> and so on. It is the second most important class after <code>Vehicle</code>.</p>
+
+    <h3>Six phases in a loop</h3>
+    <p>Two roads can never both be green. The cycle is a six-step loop kept in the enum <code>Phase</code>. Each constant knows its axis and its light, and <code>next()</code> moves to the following constant, wrapping at the end.</p>
+    <div class="code"><div class="cap"><span>engine/Phase.java</span><span>enum with fields, a constructor and methods</span></div><pre><code class="java">public enum Phase {
+    EW_GREEN(Axis.EW, SignalLight.GREEN),
+    EW_YELLOW(Axis.EW, SignalLight.YELLOW),
+    EW_CLEARANCE(Axis.EW, SignalLight.RED),      // all red
+    NS_GREEN(Axis.NS, SignalLight.GREEN),
+    NS_YELLOW(Axis.NS, SignalLight.YELLOW),
+    NS_CLEARANCE(Axis.NS, SignalLight.RED);      // all red
+
+    public SignalLight lightFor(Axis a) {
+        return a == axis ? light : SignalLight.RED;   // the other road always sees red
+    }
+    public Phase next() {
+        Phase[] all = values();
+        return all[(ordinal() + 1) % all.length];
+    }
+}</code></pre></div>
+    <p>The two "clearance" phases are the all-red pause. They give the last vehicles two seconds to get out of the box before the other road is released. With the default scenario settings the cycle looks like this.</p>
+    <div class="diagram">
+      <svg viewBox="0 0 760 190" role="img" aria-label="A 30 second fixed cycle. Main road: green 12 seconds, yellow 3, red 15. Cross street: red 17, green 8, yellow 3, red 2.">
+        <text class="t-md" x="30" y="24">What each road sees in one 30 s cycle</text>
+        <text class="t-sm t-muted" x="30" y="58">Main road</text>
+        <rect class="seg-g" x="110" y="42" width="224" height="26"/><text class="seg-txt" x="222" y="60">green 12 s</text>
+        <rect class="seg-y" x="334" y="42" width="56" height="26"/><text class="seg-txt" x="362" y="60">3 s</text>
+        <rect class="seg-r" x="390" y="42" width="360" height="26"/><text class="seg-txt-w" x="570" y="60">red 15 s</text>
+        <text class="t-sm t-muted" x="30" y="98">Cross street</text>
+        <rect class="seg-r" x="110" y="82" width="326" height="26"/><text class="seg-txt-w" x="273" y="100">red 17 s</text>
+        <rect class="seg-g" x="436" y="82" width="149" height="26"/><text class="seg-txt" x="510" y="100">green 8 s</text>
+        <rect class="seg-y" x="585" y="82" width="56" height="26"/><text class="seg-txt" x="613" y="100">3 s</text>
+        <rect class="seg-r" x="641" y="82" width="109" height="26"/><text class="seg-txt-w" x="695" y="100">red 2 s</text>
+        <line class="ln" x1="110" y1="132" x2="750" y2="132" marker-end="url(#ah)"/>
+        <g class="t-sm t-ctr">
+          <line class="ln" x1="110" y1="128" x2="110" y2="136"/><text x="110" y="152">0 s</text>
+          <line class="ln" x1="334" y1="128" x2="334" y2="136"/><text x="334" y="152">12</text>
+          <line class="ln" x1="390" y1="128" x2="390" y2="136"/><text x="390" y="152">15</text>
+          <line class="ln" x1="436" y1="128" x2="436" y2="136"/><text x="436" y="152">17</text>
+          <line class="ln" x1="585" y1="128" x2="585" y2="136"/><text x="585" y="152">25</text>
+          <line class="ln" x1="641" y1="128" x2="641" y2="136"/><text x="641" y="152">28</text>
+        </g>
+        <text class="t-sm t-muted" x="30" y="178">Both roads are red from 15 to 17 s and from 28 to 30 s: the two all-red clearance phases.</text>
+      </svg>
+    </div>
+
+    <h3>Fixed-time and adaptive control</h3>
+    <p>The scenario chooses how a green phase ends.</p>
+    <ul>
+      <li><strong>Fixed-time.</strong> The green lasts exactly its configured time, 12 s for the main road and 8 s for the cross street by default. Simple and predictable.</li>
+      <li><strong>Adaptive (vehicle-actuated).</strong> The controller looks at detectors, which here means counting vehicles within 170 px in front of each stop line, and decides whether to keep or end the green.</li>
+    </ul>
+    <div class="code"><div class="cap"><span>engine/SignalController.java</span><span>when does a green end?</span></div><pre><code class="java">private boolean greenIsOver(Axis axis, long elapsed, int here, int there) {
+    long green = greenTimeOf(axis);
+    if (mode == SignalMode.FIXED) {
+        return elapsed &gt;= green;
+    }
+    // ADAPTIVE (vehicle-actuated control)
+    if (elapsed &lt; SimConfig.MIN_GREEN_MS) {
+        return false;          // every green lasts a minimum time (4 s)
+    }
+    if (there == 0) {
+        return false;          // nobody waiting on the other road: stay green
+    }
+    if (here == 0) {
+        return true;           // our road is empty: "gap out" and switch
+    }
+    return elapsed &gt;= 2 * green;   // "max out" at twice the base green
+}</code></pre></div>
+    <p>The two special cases come from real traffic engineering. "Gap out" ends a green when the road has gone quiet. "Max out" stops a busy road from holding the junction forever when the other road has a queue. At night, with few vehicles, an adaptive junction simply rests on green for the main road until someone arrives on the cross street.</p>
+
+    <h3>The controller's loop</h3>
+    <div class="code"><div class="cap"><span>engine/SignalController.java</span><span>run()</span></div><pre><code class="java">while (engine.isRunning()) {
+    clock.awaitIfPaused();
+    // Count vehicles before taking our own lock: the lanes have locks of their own.
+    int ew = junction.demand(Axis.EW, SimConfig.DEMAND_RANGE);
+    int ns = junction.demand(Axis.NS, SimConfig.DEMAND_RANGE);
+    tick(clock.now(), ew, ns);          // synchronized: decide and maybe change phase
+    synchronized (this) {
+        wait(SimConfig.TICK_MS);        // a pre-emption request wakes us early
+    }
+}</code></pre></div>
+    <p>The controller uses <code>wait(30)</code> rather than <code>Thread.sleep(30)</code>. Both pause for 30 ms, but <code>wait</code> can be cut short. When an ambulance asks for a green light, <code>requestPreemption</code> calls <code>notifyAll()</code> and the controller reacts at once instead of up to 30 ms later. The vehicle counts are taken outside the controller's lock so that the controller never holds its own lock while asking a lane for its lock, which would invite a deadlock.</p>
+    <p>Every phase change goes through <code>setPhase</code>, and that method ends with <code>notifyAll()</code>. This is the signal that wakes every vehicle sleeping at a red light.</p>
+    <div class="code"><div class="cap"><span>engine/SignalController.java</span><span>the two halves of wait / notify</span></div><pre><code class="java">// Vehicle side: sleep until the light is green (or a siren arrives behind us).
+public synchronized void awaitGreen(Axis axis, Vehicle waiter) throws InterruptedException {
+    while (!phase.isGreenFor(axis) &amp;&amp; !waiter.mustGiveWay()) {
+        wait();
+    }
+}
+
+// Controller side: wake everybody whenever the phase changes.
+private void setPhase(Phase next, long now) {
+    phase = next;
+    phaseStart = now;
+    // ... fairness bookkeeping (Chapter 7)
+    notifyAll();
+}</code></pre></div>
+    <p>The test is in a <code>while</code> loop, never an <code>if</code>. A woken thread must re-check its condition, because <code>notifyAll</code> wakes every waiter, including those whose road is still red.</p>
+
+    <h3>Try it yourself</h3>
+    <p>Below is a small JavaScript copy of the controller's phase logic, using the same default timings and the same pre-emption rules as <code>SignalController.java</code>. It is only here to explain the idea. The real controller is the Java class. Press the buttons and watch how the lights change safely.</p>
+
+    <div class="widget" id="sigdemo">
+      <div class="w-head"><strong>Pre-emption playground</strong><span>fixed-time, main 12 s, cross 8 s, yellow 3 s, all red 2 s</span></div>
+      <div class="w-body">
+        <div class="w-lights">
+          <div class="light"><span>Main road</span><div class="lamps" id="lamps-EW"><i class="r"></i><i class="y"></i><i class="g"></i></div></div>
+          <div class="light"><span>Cross street</span><div class="lamps" id="lamps-NS"><i class="r"></i><i class="y"></i><i class="g"></i></div></div>
+        </div>
+        <div class="w-state">
+          <div class="phase" id="sd-phase">Main road green</div>
+          <div class="bar" role="presentation"><div class="fill" id="sd-fill"></div></div>
+          <div class="w-meta"><span id="sd-time">0.0 s in this phase</span><span id="sd-note"></span></div>
+          <div class="w-reqs" id="sd-reqs" aria-live="polite"></div>
+        </div>
+      </div>
+      <div class="w-controls">
+        <button type="button" class="go" id="sd-amb">Ambulance arrives on main road</button>
+        <button type="button" id="sd-fire">Fire engine arrives on cross street</button>
+        <button type="button" id="sd-pass">First vehicle passes the junction</button>
+        <button type="button" id="sd-force">Police override</button>
+        <label for="sd-speed" style="font:600 .78rem var(--font-display);color:var(--muted)">Speed</label>
+        <select id="sd-speed"><option value="1">x1</option><option value="2" selected>x2</option><option value="4">x4</option></select>
+      </div>
+      <ol class="w-log" id="sd-log"></ol>
+    </div>
+    <p>Things to try. Press the ambulance button while the cross street is green and watch the order: yellow, all red, then green for the ambulance. Press both emergency buttons and notice that the ambulance is served first, because its urgency is 3 and the fire engine's is 2. Press "First vehicle passes" and see the short recovery green before the cross street gets its turn. Then press the ambulance button twice in quick succession and see the fairness rule from Chapter 7 protect the cross street.</p>
+
+    <!-- ===================================================== 7 -->
+    <h2 id="emergency">Emergency vehicles and the three modes</h2>
+    <p><code>EmergencyVehicle</code> extends <code>Vehicle</code> and adds three behaviours. It runs at thread priority 10. It asks signals for a green light. And it releases the junction when it has passed. Ambulance and fire engine are <code>final</code> subclasses that differ only in size, speed, urgency and looks.</p>
+
+    <h3>How a vehicle asks a signal</h3>
+    <div class="code"><div class="cap"><span>vehicle/EmergencyVehicle.java</span><span>beforeStep(), shortened</span></div><pre><code class="java">@Override
+protected void beforeStep(long now) {
+    // ... wake ordinary vehicles ahead so they can pull over, then overtake them
+    PriorityMode mode = engine.getPriorityMode();
+    if (mode == PriorityMode.NONE) {
+        return;                                   // no priority: behave like everyone else
+    }
+    double range = mode == PriorityMode.LOCAL
+            ? SimConfig.LOCAL_DETECT_RANGE        // 110 px: a roadside sensor
+            : SimConfig.CORRIDOR_DETECT_RANGE;    // 800 px: a radio call
+    for (StopLine sl : lane.getStopLines()) {
+        double dist = sl.getStopS() - getFrontS();
+        if (dist &gt;= -1 &amp;&amp; dist &lt;= range &amp;&amp; requested.add(sl)) {   // ask each junction once
+            sl.getJunction().getSignal().requestPreemption(this, sl.getAxis(), now);
+        }
+    }
+}</code></pre></div>
+    <p><code>requested</code> is a <code>HashSet</code> of the stop lines already called. <code>Set.add</code> returns false if the element was present, so one line is both the duplicate check and the insertion.</p>
+
+    <h3>Why the green corridor wins: warning time</h3>
+    <p>A signal that is green for the wrong road needs <strong>3 s of yellow plus 2 s of all red</strong>, five seconds in total, before it can show green to the ambulance. Whether the ambulance has to wait comes down to one question: how much warning did the junction get?</p>
+    <div class="diagram">
+      <svg viewBox="0 0 760 230" role="img" aria-label="Warning time before the ambulance reaches each junction: local sensor 0.7 seconds, green corridor 7.1, 9.1 and 5.3 seconds. A light change needs 5 seconds.">
+        <text class="t-md" x="20" y="24">Seconds of warning before an ambulance at 90 km/h reaches the stop line</text>
+        <g class="t-sm">
+          <text x="20" y="70">Local sensor</text><text x="20" y="84" class="t-muted">every junction</text>
+          <text x="20" y="116">Green corridor</text><text x="20" y="130" class="t-muted">junction 1</text>
+          <text x="20" y="162">Green corridor</text><text x="20" y="176" class="t-muted">junction 2</text>
+          <text x="20" y="208">Green corridor</text><text x="20" y="222" class="t-muted">junction 3</text>
+        </g>
+        <rect class="bar-red" x="170" y="56" width="41" height="26"/><text class="t-md t-red" x="220" y="74">0.7 s</text>
+        <rect class="bar-acc" x="170" y="102" width="398" height="26"/><text class="t-md" x="576" y="120">7.1 s</text>
+        <rect class="bar-acc" x="170" y="148" width="510" height="26"/><text class="t-md" x="688" y="166">9.1 s</text>
+        <rect class="bar-acc" x="170" y="194" width="297" height="26"/><text class="t-md" x="475" y="212">5.3 s</text>
+        <line class="ln-red" x1="450" y1="38" x2="450" y2="226" style="stroke-dasharray:6 4"/>
+        <text class="t-sm t-red" x="456" y="46">a light change needs 5 s</text>
+      </svg>
+    </div>
+    <p>These figures come straight from the constants for an ambulance driving unobstructed at 150 px/s. The sensor sits 110 px before the stop line, which is 110 / 150 = 0.7 s of warning. Far too little, so the ambulance often arrives while the light is still changing and has to stop. In corridor mode the junctions are called when the ambulance is dispatched, and the vehicle spends 5 s approaching the map first (<code>APPROACH_MS</code>). Junction 1 at <code>s = 312</code> gets <code>5 + 312/150 = 7.1 s</code>, and junction 2 gets 9.1 s. Junction 3 is more than 800 px away, so it is called as soon as the ambulance is within 800 px, which is 800 / 150 = 5.3 s ahead. Every junction gets at least the five seconds it needs.</p>
+
+    <h3>What a junction does with the request</h3>
+    <p>When <code>requestPreemption</code> is called, the request joins a <code>LinkedList</code> kept in order of urgency. A <code>ListIterator</code> finds the first request with a lower urgency and inserts the new one before it. Medical emergencies (urgency 3) are served before fire calls (urgency 2), and equal urgencies are served first come, first served.</p>
+    <div class="code"><div class="cap"><span>engine/SignalController.java</span><span>requestPreemption(), the ordered insert</span></div><pre><code class="java">Request r = new Request(vehicle, axis, now);
+ListIterator&lt;Request&gt; it = requests.listIterator();
+while (it.hasNext()) {
+    if (it.next().urgency &lt; r.urgency) {
+        it.previous();                 // step back to just before the less urgent one
+        break;
+    }
+}
+it.add(r);
+notifyAll();                           // wake the controller thread at once</code></pre></div>
+    <p>As long as the list is not empty, the controller stops following its normal cycle and runs <code>preemptionTick</code> for the first request:</p>
+    <ol>
+      <li>If the light is already green for the ambulance's road, <strong>hold it</strong>. The first time this is true, record the moment, so the response time can be measured.</li>
+      <li>If the other road is green, <strong>end that green</strong> by going to yellow, unless that road is protected (see fairness below).</li>
+      <li>On yellow, wait out the yellow time. Then the all-red pause.</li>
+      <li>When the all-red time is over, <strong>turn green for the ambulance's road</strong>.</li>
+    </ol>
+    <p>When the ambulance leaves the box, <code>releasePreemption</code> removes the request and builds a <code>PreemptionEvent</code> with three timestamps: requested, green and cleared. That event goes to the statistics and the database. If no other request is waiting, the controller sets a short <strong>recovery</strong> so the green it held ends 3 s later, and the normal cycle takes over again.</p>
+
+    <h3>Fairness: stopping back-to-back emergencies from starving a road</h3>
+    <p>Testing showed that two ambulances close together could keep the cross street red for 40 seconds or more. The fix is a small piece of bookkeeping in <code>setPhase</code>.</p>
+    <div class="code"><div class="cap"><span>engine/SignalController.java</span><span>minimum green for a starved road</span></div><pre><code class="java">private void setPhase(Phase next, long now) {
+    phase = next;
+    phaseStart = now;
+    if (next.getLight() == SignalLight.GREEN &amp;&amp; starved[next.getAxis().ordinal()]) {
+        starved[next.getAxis().ordinal()] = false;
+        protectedUntil = now + SimConfig.MIN_GREEN_MS;   // owed at least 4 s of green
+    }
+    notifyAll();
+}</code></pre></div>
+    <p>Whenever pre-emption forces a road to stay red, <code>starved</code> is set for it. When that road finally gets a green, it is <strong>protected</strong> for 4 s: <code>preemptionTick</code> will not cut that green short before <code>protectedUntil</code>. The unit test <code>starvedRoadGetsItsMinimumGreen</code> checks it with made-up times and no threads at all.</p>
+
+    <h3>How emergencies are created</h3>
+    <ul>
+      <li><strong>By hand.</strong> The buttons, the A and F keys, F8 and F9, or a click on a road entry arrow (Shift for a fire engine) call <code>engine.dispatchEmergency</code>.</li>
+      <li><strong>By schedule.</strong> If the scenario sets "emergency every N seconds", the spawner dispatches one at random intervals between 0.5 and 1.5 times N, so the average is N but the pattern is not clockwork. Two out of three are ambulances heading east to the hospital. Every third is a fire engine entering a cross street at a random junction.</li>
+    </ul>
+    <p>Dispatching does not put the vehicle on the road at once. The engine creates it, registers its (not yet started) thread, tells the junctions if the mode is corridor, and hands it to the spawner's <code>approaching</code> list. After 5 s the spawner moves it to the front of its lane's entry queue. During those 5 s the map shows a flashing circle at the road entry, and in corridor mode the green band is already drawn along the route.</p>
+    <p>The end of a real log from a green-corridor run shows the result. A message such as "green after 0.0 s" means the light was already green when the request arrived.</p>
+    <div class="code"><div class="cap"><span>event log</span><span>real output, corridor mode</span></div><pre><code>[00:31] J3: green for Ambulance #36 after 0.0 s
+[00:32] J3: Ambulance #42 (Eastbound) requests a green light
+[00:32] J3: green for Ambulance #42 after 0.0 s
+[00:39] Ambulance #36 crossed the map in 10.3 s (delay 1.3 s, 1 stop)
+[00:40] Ambulance #42 crossed the map in 9.4 s (delay 0.4 s, 0 stops)
+[00:40] Run stopped after 41 simulated seconds</code></pre></div>
+
+    <!-- ===================================================== 8 -->
+    <h2 id="concurrency">Making threads cooperate</h2>
+    <p>With 40 or more threads reading and changing the same lanes, junctions and counters, the program has to answer three questions. What is shared? How is it protected? And how do threads wait for each other without wasting CPU? This chapter is the one to read most carefully before a viva, because it is the heart of Unit II.</p>
+
+    <h3>What is shared, and what guards it</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Shared data</th><th>Touched by</th><th>Protection</th></tr></thead>
+      <tbody>
+        <tr><td>Lane lists (<code>vehicles</code>, <code>entryQueue</code>)</td><td>every vehicle on the lane, the spawner, signal detectors, the Swing thread</td><td>All methods <code>synchronized</code> on the lane. The Swing thread gets a <em>copy</em> from <code>snapshot()</code>.</td></tr>
+        <tr><td>Junction box counts</td><td>vehicles of both axes</td><td><code>synchronized tryEnterBox</code> and <code>exitBox</code></td></tr>
+        <tr><td>Signal controller state (requests, fairness flags)</td><td>its own thread, emergency vehicles, Swing</td><td>Methods <code>synchronized</code> on the controller. The current phase is <code>volatile</code> so it can be read without a lock.</td></tr>
+        <tr><td><code>StatsCollector</code></td><td>vehicles write, Swing and the engine read</td><td><code>synchronized</code>. <code>snapshot()</code> computes every figure under one lock.</td></tr>
+        <tr><td><code>ThreadRegistry</code></td><td>engine, vehicles on exit, Swing</td><td><code>synchronized</code></td></tr>
+        <tr><td><code>EventBuffer</code></td><td>vehicles put, the logger takes</td><td><code>synchronized</code> with <code>wait</code> and <code>notifyAll</code></td></tr>
+        <tr><td><code>SimClock</code></td><td>every thread</td><td><code>synchronized</code></td></tr>
+        <tr><td><code>frontS</code>, <code>speed</code> of a vehicle</td><td>written by its own thread, read by others</td><td><code>volatile</code></td></tr>
+      </tbody>
+    </table></div>
+    <h4>volatile or synchronized?</h4>
+    <p><code>synchronized</code> gives mutual exclusion and visibility: only one thread at a time runs the guarded code, and its changes are visible to the next thread that takes the lock. <code>volatile</code> gives visibility only: a write by one thread is seen at once by readers, but nothing stops two threads from interleaving read-modify-write steps. A vehicle's <code>frontS</code> is written by exactly one thread, its own, so <code>frontS += move</code> is safe even though it is not atomic. Everyone else only reads it, and <code>volatile</code> makes sure they see fresh values.</p>
+
+    <h3>Three places where threads wait for each other</h3>
+    <p>Java's <code>wait()</code> and <code>notifyAll()</code> let a thread sleep until another thread says the situation changed. The project uses them in three places.</p>
+    <h4>1 &middot; The producer-consumer buffer</h4>
+    <p>Vehicles produce events (finished trips and pre-emptions). One logger thread consumes them. The buffer between them is bounded at 100, which gives the classic problem: producers must wait when it is full, and the consumer must wait when it is empty.</p>
+    <div class="code"><div class="cap"><span>engine/EventBuffer.java</span><span>the whole class, trimmed</span></div><pre><code class="java">public synchronized void put(T item) throws InterruptedException {
+    while (items.size() == capacity) {
+        wait();                 // producer waits for the consumer to make room
+    }
+    items.addLast(item);
+    notifyAll();                // a consumer may be waiting for data
+}
+
+public synchronized T take() throws InterruptedException {
+    while (items.isEmpty()) {
+        wait();                 // consumer waits for a producer
+    }
+    T item = items.removeFirst();
+    notifyAll();                // a producer may be waiting for room
+    return item;
+}</code></pre></div>
+    <div class="diagram">
+      <svg viewBox="0 0 780 214" role="img" aria-label="Producer-consumer: vehicle threads put events into a bounded buffer, the database logger takes them out and writes batches of 25 to MySQL.">
+        <rect class="box-acc" x="10" y="26" width="116" height="30" rx="3"/><text class="t-md" x="22" y="46">Car-12</text>
+        <rect class="box-acc" x="10" y="72" width="116" height="30" rx="3"/><text class="t-md" x="22" y="92">Bus-13</text>
+        <rect class="box-acc" x="10" y="118" width="116" height="30" rx="3"/><text class="t-md" x="22" y="138">Ambulance-14</text>
+        <text class="t-sm t-muted" x="10" y="172">producers</text>
+        <line class="ln" x1="126" y1="41" x2="196" y2="82" marker-end="url(#ah)"/>
+        <line class="ln" x1="126" y1="87" x2="196" y2="87" marker-end="url(#ah)"/>
+        <line class="ln" x1="126" y1="133" x2="196" y2="92" marker-end="url(#ah)"/>
+        <text class="t-sm" x="200" y="46">EventBuffer, capacity 100</text>
+        <g>
+          <rect class="box-acc" x="200" y="62" width="26" height="50"/><rect class="box-acc" x="228" y="62" width="26" height="50"/><rect class="box-acc" x="256" y="62" width="26" height="50"/>
+          <rect class="box-acc" x="284" y="62" width="26" height="50"/><rect class="box-acc" x="312" y="62" width="26" height="50"/><rect class="box-acc" x="340" y="62" width="26" height="50"/>
+          <rect class="box" x="368" y="62" width="26" height="50"/><rect class="box" x="396" y="62" width="26" height="50"/><rect class="box" x="424" y="62" width="26" height="50"/>
+          <rect class="box" x="452" y="62" width="26" height="50"/><rect class="box" x="480" y="62" width="26" height="50"/><rect class="box" x="508" y="62" width="26" height="50"/>
+        </g>
+        <text class="t-sm t-muted" x="200" y="132">oldest event leaves from this end</text>
+        <text class="t-sm t-muted t-end" x="534" y="132">new events join here</text>
+        <text class="t-sm t-red" x="200" y="172">put() calls wait() while full</text>
+        <text class="t-sm t-acc t-end" x="534" y="172">take() calls wait() while empty</text>
+        <line class="ln-acc" x1="534" y1="87" x2="580" y2="87" marker-end="url(#ah)"/>
+        <rect class="box-blue" x="582" y="52" width="86" height="70" rx="3"/><text class="t-md" x="592" y="82">DB-</text><text class="t-md" x="592" y="98">Logger</text>
+        <line class="ln-acc" x1="668" y1="87" x2="704" y2="87" marker-end="url(#ah)"/>
+        <rect class="box" x="706" y="62" width="66" height="50" rx="3"/><text class="t-md t-ctr" x="739" y="92">MySQL</text>
+        <text class="t-sm t-muted" x="582" y="150">one commit per 25 rows,</text><text class="t-sm t-muted" x="582" y="165">or when the buffer runs empty</text>
+      </svg>
+    </div>
+    <p>The vehicles never touch the database. Without the buffer, every vehicle that finished would have waited a few milliseconds for MySQL, and the animation would stutter. With it, the slowest thing in the system runs on its own thread at the lowest priority.</p>
+    <h4>2 &middot; Vehicles and the red light</h4>
+    <p>This is <code>awaitGreen</code> and <code>setPhase</code> from Chapter 6. A vehicle waits on the signal's monitor, and every phase change wakes all of them.</p>
+    <h4>3 &middot; The pause gate</h4>
+    <p>Every thread calls <code>clock.awaitIfPaused()</code> at the top of its loop. While the run is paused it blocks in <code>wait()</code>. Resuming calls <code>notifyAll()</code> and all of them continue. One flag freezes the entire world.</p>
+    <div class="code"><div class="cap"><span>engine/SimClock.java</span><span>the pause gate</span></div><pre><code class="java">public synchronized void awaitIfPaused() throws InterruptedException {
+    while (paused) {
+        wait();
+    }
+}
+
+public synchronized void setPaused(boolean pause) {
+    if (pause == paused) return;
+    rebase();
+    paused = pause;
+    if (!paused) {
+        notifyAll();            // wake every parked thread
+    }
+}</code></pre></div>
+    <div class="call idea"><span class="tag">Always a while loop</span><p>Each <code>wait()</code> above sits inside a <code>while</code> that re-tests the condition. A thread can be woken because <em>some</em> condition changed, not necessarily its own, and Java also allows spurious wake-ups. Using <code>if</code> instead is one of the most common concurrency bugs, and the question is likely in a viva.</p></div>
+
+    <h3>The life cycle of a thread, in this project</h3>
+    <div class="diagram">
+      <svg viewBox="0 0 760 252" role="img" aria-label="Thread states used: NEW to RUNNABLE on start, then TIMED_WAITING for sleep, WAITING for wait, BLOCKED for a lock, and TERMINATED when run ends.">
+        <rect class="box" x="10" y="105" width="110" height="40" rx="3"/><text class="t-md t-ctr" x="65" y="130">NEW</text>
+        <text class="t-sm t-muted" x="10" y="164">queued at the</text><text class="t-sm t-muted" x="10" y="178">road entry</text>
+        <rect class="box-acc" x="180" y="105" width="120" height="40" rx="3"/><text class="t-md t-ctr" x="240" y="130">RUNNABLE</text>
+        <rect class="box" x="180" y="200" width="120" height="40" rx="3"/><text class="t-md t-ctr" x="240" y="225">TERMINATED</text>
+        <rect class="box-blue" x="360" y="20" width="150" height="40" rx="3"/><text class="t-md t-ctr" x="435" y="45">TIMED_WAITING</text>
+        <rect class="box-amb" x="360" y="105" width="150" height="40" rx="3"/><text class="t-md t-ctr" x="435" y="130">WAITING</text>
+        <rect class="box-red" x="360" y="190" width="150" height="40" rx="3"/><text class="t-md t-ctr" x="435" y="215">BLOCKED</text>
+        <line class="ln" x1="120" y1="125" x2="178" y2="125" marker-end="url(#ah)"/><text class="t-sm t-ctr" x="150" y="117">start()</text>
+        <line class="ln" x1="300" y1="112" x2="358" y2="46" marker-start="url(#ah)" marker-end="url(#ah)"/>
+        <line class="ln" x1="300" y1="125" x2="358" y2="125" marker-start="url(#ah)" marker-end="url(#ah)"/>
+        <line class="ln" x1="300" y1="138" x2="358" y2="205" marker-start="url(#ah)" marker-end="url(#ah)"/>
+        <line class="ln" x1="240" y1="145" x2="240" y2="198" marker-end="url(#ah)"/><text class="t-sm" x="250" y="176">run() ends</text>
+        <g class="t-sm">
+          <text x="526" y="38">Thread.sleep(30) at the end of every tick</text><text x="526" y="54" class="t-muted">vehicles, spawner, supervisor</text>
+          <text x="526" y="123">wait() at a red light, an empty buffer,</text><text x="526" y="139" class="t-muted">a paused clock</text>
+          <text x="526" y="208">waiting for a lock another thread holds</text><text x="526" y="224" class="t-muted">brief, and rare in this design</text>
+        </g>
+      </svg>
+    </div>
+    <p>The Thread Monitor tab is this diagram, live. It reads <code>Thread.getState()</code> for every thread twice a second, which is why a queued car shows as NEW, a moving one as TIMED_WAITING, and one at a red light as WAITING.</p>
+
+    <h3>Thread priorities</h3>
+    <p>Emergency vehicles run at <code>MAX_PRIORITY</code> (10). Signal controllers run at 7, because one slow controller delays dozens of vehicles. The spawner and ordinary vehicles use the default 5, the supervisor 6, and the database logger <code>MIN_PRIORITY</code> (1), because nothing on screen depends on it. Priorities are only a hint to the operating system scheduler, so the program never relies on them for correctness. Correctness comes from the locks. Priority only makes the important threads a little more likely to get CPU first.</p>
+
+    <h3>Avoiding deadlock</h3>
+    <p>A deadlock needs a circle of threads each holding a lock the next one wants. We broke the circle by fixing the order in which locks are ever nested.</p>
+    <ul>
+      <li>The only nested locking in the program is <strong>signal lock, then lane lock</strong>. It happens in <code>awaitGreen</code>, which holds the signal's monitor and calls <code>waiter.mustGiveWay()</code>, which locks the lane.</li>
+      <li>Nothing ever takes a signal lock while holding a lane lock. Lane methods that need to know a light's colour call <code>isGreen()</code>, which reads the <code>volatile</code> phase and takes no lock.</li>
+      <li>The controller counts vehicles <em>before</em> entering its own synchronized <code>tick()</code>, so it never holds its lock while asking a lane for its lock.</li>
+      <li><code>releasePreemption</code> hands its event to the buffer <em>after</em> leaving its synchronized block, because <code>put()</code> may block if the buffer is full and it must not do that while holding the controller's lock.</li>
+    </ul>
+
+    <h3>Four bugs the tests found</h3>
+    <p>Concurrent code looks right until it runs a few thousand times. We wrote a <code>SafetyChecker</code> thread that watches a running simulation every 20 ms (Chapter 14), and it found four real problems. They make good stories for the report.</p>
+    <div class="call bug"><span class="tag">Bug 1 &middot; vehicles overlapping</span><p><strong>Symptom.</strong> Two vehicles drew on top of each other when an ambulance passed a pulled-over bus. <strong>Cause.</strong> While the ambulance is alongside, it and the bus are side by side, so the order of the lane's list no longer matched the order on the road, and the car behind followed the wrong one. <strong>Fix.</strong> <code>leaderOf</code> now follows whichever of the passing pair has its rear bumper nearest, and <code>overtakeYielding</code> swaps their places once the ambulance is ahead.</p></div>
+    <div class="call bug"><span class="tag">Bug 2 &middot; gridlock</span><p><strong>Symptom.</strong> The stall detector reported that the front car of a lane had not moved for 40 seconds and that no vehicle had finished a trip for 25 seconds. <strong>Cause.</strong> A queue from the next junction reached back into this junction's box. Vehicles sitting in the box could not leave, and the crossing road, whose cars wait for an empty box, could not enter even on green, so the jam spread. <strong>Fix.</strong> The "don't block the box" rule, <code>Lane.roomBeyond</code>, from Chapter 5. A vehicle enters only if it fits on the far side.</p></div>
+    <div class="call bug"><span class="tag">Bug 3 &middot; a circular wait</span><p><strong>Symptom.</strong> An ambulance stood still for good behind a line of vehicles. <strong>Cause.</strong> The bus at the front had pulled over and stopped for the siren. The auto-rickshaw behind it could not pull over, because it was inside a junction box where stopping is not allowed, so it drove on and then got blocked by the stopped bus. The ambulance was blocked by the rickshaw, and the bus would not move until the ambulance had passed. That is a circle. <strong>Fix.</strong> A vehicle pulls over only if every vehicle between it and the siren has done so too (<code>Lane.mustGiveWay</code>), so a vehicle that cannot move aside no longer ends up stuck behind one that has stopped.</p></div>
+    <div class="call bug"><span class="tag">Bug 4 &middot; starvation</span><p><strong>Symptom.</strong> With ambulances close together, a cross street stayed red for more than 40 seconds. <strong>Cause.</strong> Each pre-emption was fair on its own, but back to back they never gave the other road a turn. <strong>Fix.</strong> The minimum-green protection in Chapter 7.</p></div>
+    <p>While chasing Bug 1 we also had a false alarm worth remembering: the checker itself had a race. It read the leader's position, then the follower's, and in between the leader moved. Reading the follower first removes the false report, because the leader can only move forward.</p>
+
+    <!-- ===================================================== 9 -->
+    <h2 id="time">Time and the life of a run</h2>
+    <h3>Simulated time</h3>
+    <p>The simulation keeps its own clock, <code>SimClock</code>, so it can run faster than real time and stop completely when paused. Every other class asks the clock instead of calling <code>System.currentTimeMillis()</code>.</p>
+    <div class="code"><div class="cap"><span>engine/SimClock.java</span><span>simulated milliseconds</span></div><pre><code class="java">public synchronized long now() {
+    if (paused) {
+        return baseSimMs;                    // time stands still
+    }
+    return baseSimMs + (System.nanoTime() - baseRealNanos) / 1000000L * speed;
+}</code></pre></div>
+    <p>Whenever the speed or the pause state changes, <code>rebase()</code> stores the current simulated time and the current real time as a new starting point, so the formula never jumps.</p>
+    <p>Speed x8 means one real second is eight simulated seconds. A thread still ticks every 30 ms of real time, so at x8 each tick covers about 240 ms of simulated time. That is close to the <code>MAX_STEP_MS = 250</code> cap on one step, and it is why x8 is the highest speed offered. Faster, and vehicles would move in jumps bigger than their own length.</p>
+
+    <h3>Random arrivals</h3>
+    <p>The spawner gives every lane a chance of an arrival on every tick. The probability is <code>vehiclesPerMinute / 60 * dt</code>. Over many ticks that produces random gaps between arrivals with the right average, the same pattern as real traffic. A <code>Random</code> seeded from the scenario's seed makes the arrival sequence repeatable, so the three priority modes in a benchmark face the same traffic.</p>
+
+    <h3>Stopping a run safely</h3>
+    <p>Stopping is harder than starting, because 40 threads are in the middle of different things. <code>SimulationEngine.stop</code> does this:</p>
+    <ol>
+      <li>Inside a <code>synchronized</code> block, check <code>running</code> and clear it. The first caller wins, so pressing Stop at the moment time runs out ends the run only once.</li>
+      <li>Release the pause gate, so that no thread stays parked there.</li>
+      <li><strong>Interrupt</strong> every registered thread except the logger. A thread asleep in <code>sleep()</code> or <code>wait()</code> gets an <code>InterruptedException</code> and falls into its <code>finally</code> block.</li>
+      <li>Start a short-lived <code>RunFinisher</code> thread to do the slow part, so the Swing window never freezes. It joins each thread for up to 2 s, puts the <code>END</code> marker in the buffer, waits up to 15 s for the logger to drain it, builds the <code>RunSummary</code>, calls <code>sp_finish_run</code> and notifies the UI.</li>
+    </ol>
+    <p>The logger is deliberately not interrupted. It has to keep draining the buffer until it meets the <code>END</code> marker, otherwise the last trips of the run would be lost.</p>
+    <div class="call idea"><span class="tag">A Java gotcha</span><p>The supervisor is an inner class that extends <code>Thread</code>. Inside it, writing <code>stop(true)</code> did not call the engine's method. It resolved to the one inherited from <code>Thread</code>, and the compiler complained. The fix is to name the outer object: <code>SimulationEngine.this.stop(true)</code>. The same lesson shows up in Unit I as the use of <code>this</code> to pick the right object.</p></div>
+
+    <!-- ===================================================== 10 -->
+    <h2 id="database">Saving it all in MySQL</h2>
+    <h3>The schema</h3>
+    <div class="diagram">
+      <svg viewBox="0 0 800 392" role="img" aria-label="Four tables: scenario to simulation_run on delete set null, simulation_run to vehicle_trip and preemption_event on delete cascade.">
+        <rect class="box-acc" x="0" y="20" width="200" height="26"/><rect class="chip" x="0" y="46" width="200" height="140"/>
+        <text class="t-md" x="10" y="38">scenario</text>
+        <g class="t-mono"><text x="10" y="64">scenario_id  PK</text><text x="10" y="80">name  UNIQUE</text><text x="10" y="96">junction_count</text><text x="10" y="112">main_rate_per_min</text><text x="10" y="128">signal_mode  ENUM</text><text x="10" y="144">priority_mode  ENUM</text><text x="10" y="160">vehicle_mix, duration_sec</text><text x="10" y="176" class="t-muted">+ 9 more columns</text></g>
+        <rect class="box-acc" x="290" y="20" width="230" height="26"/><rect class="chip" x="290" y="46" width="230" height="204"/>
+        <text class="t-md" x="300" y="38">simulation_run</text>
+        <g class="t-mono"><text x="300" y="64">run_id  PK</text><text x="300" y="80">scenario_id  FK</text><text x="300" y="96">scenario_name</text><text x="300" y="112">signal_mode, priority_mode</text><text x="300" y="128">started_at, ended_at</text><text x="300" y="144">status  ENUM</text><text x="300" y="160">vehicles_completed</text><text x="300" y="176">avg_delay_sec</text><text x="300" y="192">emergency_avg_delay_sec</text><text x="300" y="208">throughput_per_min</text><text x="300" y="224">max_delay_sec, avg_stops</text><text x="300" y="240" class="t-muted">+ 3 more columns</text></g>
+        <rect class="box-acc" x="590" y="10" width="210" height="26"/><rect class="chip" x="590" y="36" width="210" height="172"/>
+        <text class="t-md" x="600" y="28">vehicle_trip</text>
+        <g class="t-mono"><text x="600" y="54">trip_id  PK</text><text x="600" y="70">run_id  FK</text><text x="600" y="86">vehicle_no, vehicle_type</text><text x="600" y="102">is_emergency</text><text x="600" y="118">direction  ENUM</text><text x="600" y="134">entry_sim_ms, exit_sim_ms</text><text x="600" y="150">travel_sec, delay_sec</text><text x="600" y="166">wait_sec, stops</text><text x="600" y="182" class="t-muted">INDEX (run_id, is_emergency)</text></g>
+        <rect class="box-acc" x="590" y="226" width="210" height="26"/><rect class="chip" x="590" y="252" width="210" height="140"/>
+        <text class="t-md" x="600" y="244">preemption_event</text>
+        <g class="t-mono"><text x="600" y="270">event_id  PK</text><text x="600" y="286">run_id  FK</text><text x="600" y="302">junction_no, vehicle_no</text><text x="600" y="318">requested_sim_ms</text><text x="600" y="334">green_sim_ms  (can be NULL)</text><text x="600" y="350">cleared_sim_ms</text><text x="600" y="366">response_sec</text><text x="600" y="382" class="t-muted">+ vehicle_type, direction</text></g>
+        <line class="ln" x1="200" y1="96" x2="288" y2="96" marker-end="url(#ah)"/>
+        <text class="t-sm t-ctr" x="244" y="88">1 : n</text><text class="t-sm t-muted t-ctr" x="244" y="114">SET NULL</text>
+        <line class="ln" x1="520" y1="72" x2="588" y2="72" marker-end="url(#ah)"/>
+        <text class="t-sm t-ctr" x="554" y="64">1 : n</text><text class="t-sm t-muted t-ctr" x="554" y="90">CASCADE</text>
+        <path class="ln" d="M520 210 H556 V310 H588" marker-end="url(#ah)"/>
+        <text class="t-sm t-muted" x="528" y="204" style="font-size:10.5px">1 : n</text><text class="t-sm t-muted" x="528" y="330" style="font-size:10.5px">CASCADE</text>
+      </svg>
+    </div>
+    <ul>
+      <li>All tables use InnoDB so that foreign keys and transactions work.</li>
+      <li>Modes are <code>ENUM</code> columns, so MySQL itself rejects a mode that does not exist. <code>CHECK</code> constraints restrict the junction count to 1 to 3 and the duration to 30 to 1800 s. <code>name</code> is <code>UNIQUE</code>.</li>
+      <li>Deleting a scenario sets <code>simulation_run.scenario_id</code> to <code>NULL</code> (<code>ON DELETE SET NULL</code>), because past results must survive. The run keeps a copy of the scenario's name and modes for that reason. Deleting a run removes its trips and pre-emptions (<code>ON DELETE CASCADE</code>).</li>
+      <li>The index on <code>(run_id, is_emergency)</code> makes the per-run, per-kind aggregates fast.</li>
+    </ul>
+
+    <h3>Three stored procedures, three ways to call them</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Procedure</th><th>Parameters</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>sp_start_run</code></td><td>5 IN, 1 OUT (<code>p_run_id</code>)</td><td>Inserts the run row and returns its id through <code>LAST_INSERT_ID()</code></td></tr>
+        <tr><td><code>sp_finish_run</code></td><td>3 IN, 3 OUT (trips, average delay, emergency delay)</td><td>Computes the run's figures from the stored trips and updates the run row</td></tr>
+        <tr><td><code>sp_mode_comparison</code></td><td>1 IN (signal filter)</td><td>Returns one row per priority mode with averages, for the chart</td></tr>
+      </tbody>
+    </table></div>
+    <div class="code"><div class="cap"><span>db/RunDao.java</span><span>CallableStatement with an OUT parameter</span></div><pre><code class="java">try (Connection con = Database.getConnection();
+     CallableStatement cs = con.prepareCall("{call sp_start_run(?, ?, ?, ?, ?, ?)}")) {
+    cs.setInt(1, scenario.getId());
+    cs.setString(2, scenario.getName());
+    cs.setString(3, signalMode.name());
+    cs.setString(4, priorityMode.name());
+    cs.setInt(5, scenario.getJunctionCount());
+    cs.registerOutParameter(6, Types.INTEGER);     // the new run id comes back here
+    cs.execute();
+    return cs.getInt(6);
+}</code></pre></div>
+    <p>There is a useful cross-check in <code>sp_finish_run</code>. The simulation has already counted its own trips and delays in memory. The stored procedure counts them again from the rows that actually reached MySQL, and its numbers replace the in-memory ones in the summary. The results dialog says "Figures checked by the stored procedure sp_finish_run", and if any events had been lost on the way to the database, the counts would visibly differ.</p>
+
+    <h3>Which JDBC statement is used where</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Type</th><th>Used for</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><code>Statement</code></td><td><code>listRuns()</code>, <code>findAll()</code>, running the SQL script</td><td>No user-supplied values, so a plain statement is fine</td></tr>
+        <tr><td><code>PreparedStatement</code></td><td>Scenario create, update, delete, find; run queries; the logger's batch inserts</td><td>Values go in as parameters, which prevents SQL injection, and a statement can be reused for a batch</td></tr>
+        <tr><td><code>CallableStatement</code></td><td>The three stored procedures</td><td>The only statement type that reads OUT parameters</td></tr>
+        <tr><td><code>DatabaseMetaData</code></td><td><code>SchemaInstaller.isInstalled</code>, the connection test</td><td>Ask the server whether the tables exist and which MySQL and driver versions answered</td></tr>
+        <tr><td><code>ResultSetMetaData</code></td><td>The detail tables in the Reports tab</td><td>Column names come from the query itself, so one method serves different queries</td></tr>
+      </tbody>
+    </table></div>
+    <p>No user text is ever joined into a SQL string. A scenario named <code>x'; DROP TABLE scenario;--</code> is stored as plain text.</p>
+
+    <h3>The connection</h3>
+    <p><code>Database.getConnection()</code> loads the driver class, then asks <code>DriverManager</code> for a connection. MySQL Connector/J is a <strong>Type 4</strong> driver: pure Java that speaks MySQL's network protocol directly, so nothing else needs installing on the lab computer.</p>
+    <div class="code"><div class="cap"><span>db/DbConfig.java</span><span>the JDBC URL</span></div><pre><code class="java">return "jdbc:mysql://" + host + ":" + port + "/" + database
+        + "?createDatabaseIfNotExist=true&amp;useSSL=false&amp;allowPublicKeyRetrieval=true"
+        + "&amp;serverTimezone=UTC&amp;connectTimeout=5000";</code></pre></div>
+    <p>Most operations open a connection, use it and close it with try-with-resources. That is simple and plenty fast for button-click operations. The logger is the exception: it opens one connection for the whole run, because it inserts hundreds of rows.</p>
+
+    <h3>The logger: producer-consumer, batches and a transaction</h3>
+    <div class="code"><div class="cap"><span>engine/DatabaseLogger.java</span><span>run(), the consumer loop, shortened</span></div><pre><code class="java">con.setAutoCommit(false);                       // one transaction per batch
+trips = con.prepareStatement(RunDao.INSERT_TRIP);
+preemptions = con.prepareStatement(RunDao.INSERT_PREEMPTION);
+while (true) {
+    SimEvent event = buffer.take();             // waits while the buffer is empty
+    if (event == SimEvent.END) break;           // the engine says the run is over
+    file.write(event);                          // always write the log file
+    if (dbHealthy) {
+        RunDao.addToBatch(event, runId, trips, preemptions);
+        pending++;
+        if (pending &gt;= SimConfig.DB_BATCH_SIZE || buffer.size() == 0) {
+            flush(con, trips, preemptions, pending);    // executeBatch, then commit
+            pending = 0;
+        }
+    }
+}
+
+private void flush(...) throws SQLException {
+    try {
+        trips.executeBatch();
+        preemptions.executeBatch();
+        con.commit();
+    } catch (SQLException e) {
+        con.rollback();                         // never leave half a batch behind
+        throw e;
+    }
+}</code></pre></div>
+    <p>Sending 25 rows in one round trip is far cheaper than 25 separate inserts. Flushing also when the buffer is empty means the data is never held back for long. If MySQL fails mid-run, the logger rolls back, marks the database as unhealthy and carries on writing the log file, so a run is never lost because of a database fault.</p>
+
+    <h3>Scenarios: one interface, two implementations</h3>
+    <p>The user interface never mentions MySQL when it saves a scenario. It talks to the interface <code>ScenarioRepository</code>, and the object behind it is either <code>MySqlScenarioRepository</code> or <code>InMemoryScenarioRepository</code>. <code>AppContext</code> swaps them when the connection state changes, and Java picks the right method at run time (dynamic method dispatch). This is why the app works offline.</p>
+    <p>In the MySQL version, a duplicate name makes the database throw <code>SQLIntegrityConstraintViolationException</code>. The repository catches it and rethrows it as an <code>InvalidScenarioException</code> that names the <code>name</code> field, so the form can put the cursor there and show a friendly message.</p>
+
+    <h3>Installing the schema from Java</h3>
+    <p>JDBC runs one statement at a time and does not understand the <code>DELIMITER</code> command that MySQL's own clients use around stored procedure bodies. The class <code>SqlScript</code> reads the bundled script line by line, switches delimiter when it sees <code>DELIMITER $$</code>, and splits it into single statements. <code>SchemaInstaller</code> then runs them, skipping <code>CREATE DATABASE</code> and <code>USE</code> because the connection already points at the right database. The unit test <code>SqlScriptTest</code> checks that the real script parses into exactly three procedures.</p>
+
+    <!-- ===================================================== 11 -->
+    <h2 id="files">Files, serialization and exceptions</h2>
+    <h3>Where the program touches files</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>File</th><th>Class</th><th>Java I/O used</th></tr></thead>
+      <tbody>
+        <tr><td><code>db.properties</code></td><td><code>DbConfig</code></td><td><code>Properties</code> with <code>FileReader</code> and <code>FileWriter</code>. Each lab computer keeps its own MySQL password, and the file is never committed.</td></tr>
+        <tr><td><code>logs/run-12-....log</code></td><td><code>RunLogWriter</code></td><td><code>BufferedWriter</code> over <code>FileWriter</code>. One line per event, written even without a database.</td></tr>
+        <tr><td><code>*.gcs</code> scenario files</td><td><code>ScenarioFiles</code></td><td><code>ObjectOutputStream</code> over <code>FileOutputStream</code>, and the matching input streams.</td></tr>
+        <tr><td>CSV export</td><td><code>CsvExporter</code></td><td><code>PrintWriter</code> over <code>BufferedWriter</code>, with proper quoting of commas and quotes.</td></tr>
+        <tr><td><code>/sql/green_corridor.sql</code></td><td><code>SchemaInstaller</code></td><td><code>getResourceAsStream</code>: the script travels inside the jar.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Serialization, and why reading it needs care</h3>
+    <p><code>Scenario implements Serializable</code> and declares a <code>serialVersionUID</code>. Exporting writes the whole object with <code>writeObject</code>. Importing reads it back, resets the id to 0 because the scenario is new to this database, and validates it before use.</p>
+    <p>Reading objects from a file is a known security risk. Java creates whatever classes the file names, and attackers have built malicious files that run code that way. So <code>ScenarioFiles</code> reads through a stream that checks every class name against a short allow-list.</p>
+    <div class="code"><div class="cap"><span>io/ScenarioFiles.java</span><span>an allow-list for deserialization</span></div><pre><code class="java">private static class SafeObjectInputStream extends ObjectInputStream {
+    private static final Set&lt;String&gt; ALLOWED = new HashSet&lt;String&gt;(Arrays.asList(
+            Scenario.class.getName(), SignalMode.class.getName(), PriorityMode.class.getName(),
+            Enum.class.getName(), String.class.getName()));
+
+    @Override
+    protected Class&lt;?&gt; resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+        if (!ALLOWED.contains(desc.getName())) {
+            throw new InvalidClassException(desc.getName(), "not allowed in a scenario file");
+        }
+        return super.resolveClass(desc);
+    }
+}</code></pre></div>
+    <p>A unit test writes an <code>ArrayList</code> to a <code>.gcs</code> file and checks that loading it is refused.</p>
+
+    <h3>Reading "CAR:45,BIKE:25,BUS:10"</h3>
+    <p>The vehicle mix is stored as one text field. <code>StringTokenizer</code> splits it twice, first on commas and then on colons, and the method validates as it goes.</p>
+    <div class="code"><div class="cap"><span>model/Scenario.java</span><span>parseVehicleMix(), shortened</span></div><pre><code class="java">StringTokenizer pairs = new StringTokenizer(vehicleMix, ",");
+while (pairs.hasMoreTokens()) {
+    String pair = pairs.nextToken().trim();
+    StringTokenizer parts = new StringTokenizer(pair, ":");
+    if (parts.countTokens() != 2) {
+        throw new InvalidScenarioException("vehicleMix", "\"" + pair + "\" should look like CAR:45");
+    }
+    String type = parts.nextToken().trim().toUpperCase();
+    // ... unknown type? duplicate? weight not a whole number? weight outside 0 to 100?
+    mix.put(type, weight);          // LinkedHashMap keeps the order
+}</code></pre></div>
+
+    <h3>The exception design</h3>
+    <div class="code"><div class="cap"><span>exception/</span><span>six custom classes</span></div><pre><code>Exception
+ `-- SimulationException                       checked: callers must handle it
+      |-- InvalidScenarioException             knows which field is wrong
+      |-- RepositoryException                  wraps the SQLException that caused it
+      |    `-- DatabaseUnavailableException    cannot reach MySQL at all
+      `-- ScenarioFileException                a scenario file could not be read or was refused
+
+RuntimeException
+ `-- IllegalSimulationStateException           unchecked: a programming error, such as starting a run twice</code></pre></div>
+    <ul>
+      <li><strong>Checked</strong> exceptions describe things that can go wrong in normal use: a bad value typed in a form, a database that is down, a damaged file. The compiler forces every caller to deal with them.</li>
+      <li><strong>Unchecked</strong> <code>IllegalSimulationStateException</code> marks a bug in the program itself, such as asking a stopped engine to pause. Nobody should have to write a <code>catch</code> for that.</li>
+      <li><code>InvalidScenarioException.getField()</code> lets the form focus the right text box. The user sees "Main road traffic must be between 0 and 40 (it is 99)" with the cursor already in the field.</li>
+      <li>Repository methods wrap a low-level <code>SQLException</code> in a <code>RepositoryException</code> and keep it as the cause, so the user sees a readable message and the stack trace is still available.</li>
+    </ul>
+    <p>Other exception features appear naturally: try-with-resources around every JDBC and file object, a multi-catch such as <code>catch (IOException | NumberFormatException e)</code> when reading the properties file, <code>finally</code> in the vehicle loop, and <code>throw</code> and <code>throws</code> throughout.</p>
+
+    <!-- ===================================================== 12 -->
+    <h2 id="swing">The Swing interface</h2>
+    <p>The window is about 3,300 of the project's 8,400 lines, the largest package. Most of it is routine Swing. The interesting parts are the rule that keeps it safe, the custom-painted map, and the event handling.</p>
+
+    <h3>The window</h3>
+    <p><code>MainFrame extends JFrame</code> and holds a menu bar (<code>JMenuBar</code>, <code>JMenu</code>, <code>JMenuItem</code> with keyboard accelerators such as F5 to start and Ctrl+Q to quit), a <code>JTabbedPane</code> with the four panels, and a status bar that shows the MySQL connection state and the number of live threads. The look and feel is Nimbus with the project's green. The window icon is a small traffic light drawn in code with <code>Graphics2D</code>, so there are no image files to lose. Closing the window asks for confirmation if a run is going, which is why the frame uses <code>DO_NOTHING_ON_CLOSE</code> and a <code>WindowAdapter</code>.</p>
+
+    <h3>The one rule: only the event thread touches Swing</h3>
+    <p>Swing components are not thread-safe. They may be changed only on the <strong>event dispatch thread</strong> (EDT). Our program has the opposite situation: dozens of simulation threads that want to report things. So there are two crossings, and each one is handled the same way every time.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Direction</th><th>Example</th><th>How</th></tr></thead>
+      <tbody>
+        <tr><td>Simulation thread to screen</td><td>An event log line, or "the run finished"</td><td><code>SwingUtilities.invokeLater(() -&gt; appendLog(message))</code> queues the work for the EDT.</td></tr>
+        <tr><td>Screen to a slow job</td><td>Connect to MySQL, test a connection, install the tables</td><td>A new <code>Thread</code> (DB-Connect, DB-Test, DB-Install) does the network work, then calls <code>invokeLater</code> with the result. The window never freezes while MySQL answers.</td></tr>
+        <tr><td>Screen reading the simulation</td><td>Drawing vehicles, updating tiles</td><td>Three <code>javax.swing.Timer</code> objects fire on the EDT: every 33 ms (repaint), 250 ms (statistics) and 500 ms (Thread Monitor). Each reads snapshots and never holds a lane lock while painting.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="code"><div class="cap"><span>ui/LiveSimulationPanel.java</span><span>implements EngineListener</span></div><pre><code class="java">@Override
+public void onLog(final String message) {
+    SwingUtilities.invokeLater(() -&gt; appendLog(message));      // hop onto the EDT
+}
+
+@Override
+public void onRunFinished(final RunSummary summary) {
+    SwingUtilities.invokeLater(() -&gt; {
+        refreshStats();
+        engine = null;
+        canvas.setEngine(null);
+        updateControls();
+        frame.runFinished(summary);                              // opens the results dialog
+    });
+}</code></pre></div>
+    <p>The engine knows nothing about Swing. It only knows the small interface <code>EngineListener</code>, so the same engine runs headless in the benchmark tool with a different listener.</p>
+
+    <h3>The map: custom painting</h3>
+    <p><code>SimulationCanvas extends JComponent</code> and overrides <code>paintComponent</code>. This is the place where Swing and AWT meet. Swing's components are lightweight and built on AWT, and drawing uses AWT's <code>Graphics2D</code>.</p>
+    <ol>
+      <li><strong>Scale to fit.</strong> The world is 1200 x 640 units. <code>scale = min(width / 1200, height / 640)</code>, and the offsets centre the map, so it fits any window size.</li>
+      <li><strong>Cached background.</strong> Roads, blocks, zebra crossings and junction hatching never change, so <code>WorldPainter</code> paints them once into a <code>BufferedImage</code>. The image is rebuilt only when the window is resized or the number of junctions changes.</li>
+      <li><strong>Live layer.</strong> On top, in this order: detector loops (local-sensor mode), the green corridor band, ordinary vehicles, emergency vehicles with a flashing siren glow, signal heads, priority rings and labels, the road-entry arrows with queue counts, and highlight rings.</li>
+      <li><strong>Overlays in screen coordinates.</strong> After resetting the transform: the time display, tooltips, the Paused banner and the help panel.</li>
+    </ol>
+    <p>Each vehicle paints itself. <code>Vehicle.draw</code> is <code>final</code>: it moves and rotates the coordinate system with an <code>AffineTransform</code> to the vehicle's centre and heading, calls the abstract <code>drawBody</code> that each subclass implements, and then adds brake lights when the vehicle is stopped. That structure, a fixed skeleton with one overridden step, is the template method pattern. The canvas simply calls <code>v.draw(g, t)</code> on every vehicle and Java picks the right body.</p>
+
+    <h3>Mouse and keyboard</h3>
+    <div class="code"><div class="cap"><span>ui/SimulationCanvas.java</span><span>adapters: override only what you need</span></div><pre><code class="java">MouseAdapter mouseHandler = new MouseAdapter() {
+    @Override public void mouseMoved(MouseEvent e)   { updateHover(e.getX(), e.getY()); }
+    @Override public void mouseExited(MouseEvent e)  { /* clear hover state */ }
+    @Override public void mousePressed(MouseEvent e) { requestFocusInWindow(); handleClick(e); }
+};
+addMouseListener(mouseHandler);
+addMouseMotionListener(mouseHandler);
+
+addKeyListener(new KeyAdapter() {
+    @Override public void keyPressed(KeyEvent e) { handleKey(e); }
+});</code></pre></div>
+    <ul>
+      <li><strong>The delegation event model.</strong> The canvas is the event <em>source</em>. A <code>MouseEvent</code> or <code>KeyEvent</code> object describes what happened, and the registered <em>listener</em> handles it. <code>MouseAdapter</code> and <code>KeyAdapter</code> are classes that implement the listener interface with empty methods, so we override only the methods we need.</li>
+      <li><strong>Screen to world.</strong> A click arrives in pixels, so <code>toWorld</code> undoes the scale and offset to find the point on the 1200 x 640 map. <code>Vehicle.contains</code> then rotates that point into the vehicle's own frame, so the hit test works for a vehicle heading in any direction.</li>
+      <li><strong>What a click does.</strong> A vehicle: select it. A junction: <code>forceSwitch</code> ends its green (traffic police). A road entry: dispatch an ambulance (Shift for a fire engine).</li>
+      <li><strong>Tooltips.</strong> They are drawn by hand as rounded boxes, because a standard tooltip cannot show four lines about a thread that change every frame.</li>
+      <li><strong>Focus.</strong> The buttons are set not focusable and a click on the map requests focus, otherwise a button would swallow the Space key.</li>
+      <li><strong>Decoupling.</strong> The canvas does not know the panel. It calls the small interface <code>SimulationCanvas.Controls</code> (<code>startRun</code>, <code>stopRun</code>, <code>togglePause</code>, <code>dispatch</code>), which the panel implements. That is a callback.</li>
+    </ul>
+
+    <h3>Layouts and components</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Layout manager</th><th>Where it is used</th></tr></thead>
+      <tbody>
+        <tr><td><code>BorderLayout</code></td><td>The frame (tabs in the centre, status bar at the bottom), and each tab's toolbar, map, side panel and log</td></tr>
+        <tr><td><code>FlowLayout</code></td><td>Toolbar rows and button rows</td></tr>
+        <tr><td><code>GridLayout</code></td><td>The statistic tiles (two columns) and the scenario form (label and field per row)</td></tr>
+        <tr><td><code>CardLayout</code></td><td>The Scenarios tab switches between the list card and the edit-form card. The Reports tab switches between the online card and an "offline" explanation.</td></tr>
+        <tr><td><code>BoxLayout</code></td><td>The side panel stacks its headings, tiles and junction list vertically</td></tr>
+        <tr><td><code>GridBagLayout</code></td><td>Centres the offline message in the Reports tab</td></tr>
+      </tbody>
+    </table></div>
+    <p>Components used: <code>JFrame</code>, <code>JPanel</code>, <code>JComponent</code> (the map), <code>JLabel</code>, <code>JTextField</code>, <code>JPasswordField</code>, <code>JButton</code>, <code>JComboBox</code>, <code>JCheckBox</code>, <code>JTabbedPane</code>, <code>JScrollPane</code>, <code>JSplitPane</code>, <code>JTable</code>, <code>JDialog</code>, <code>JOptionPane</code> and <code>JFileChooser</code>.</p>
+    <ul>
+      <li><strong>Tables.</strong> The scenarios and runs use <code>DefaultTableModel</code>. The Thread Monitor uses a custom <code>AbstractTableModel</code> and a cell renderer that paints the State column in the colour of the state. The tables sort by clicking a header (<code>setAutoCreateRowSorter</code>).</li>
+      <li><strong>Forms.</strong> <code>Scenario.validate()</code> checks the values. On an <code>InvalidScenarioException</code>, the form shows the message and calls <code>requestFocusInWindow()</code> on the field it names. Enter saves and Esc cancels through an <code>InputMap</code> and <code>ActionMap</code> key binding.</li>
+      <li><strong>Icons.</strong> The junction list shows two small traffic lights beside each junction. They are drawn by a class that implements Swing's <code>Icon</code> interface.</li>
+    </ul>
+
+    <!-- ===================================================== 13 -->
+    <h2 id="stats">Measuring the traffic</h2>
+    <p>Every number in the app comes from <code>TripRecord</code> objects. When a vehicle finishes, <code>buildTrip</code> creates one (the formula is in Chapter 5), and <code>vehicleFinished</code> hands it to two places: the <code>StatsCollector</code> for the live figures and the event buffer for the database. <code>TripRecord</code> extends the abstract class <code>SimEvent</code>, which implements <code>Serializable</code> and requires <code>toLogLine()</code>. <code>PreemptionEvent</code> is the other subclass. The special value <code>SimEvent.END</code> is an anonymous subclass used as the "no more events" marker.</p>
+
+    <h3>What gets calculated</h3>
+    <ul>
+      <li><strong>Average delay of ordinary vehicles</strong>, and separately the <strong>average delay of emergency vehicles</strong>. They are never mixed, because that would hide exactly the difference the project is about.</li>
+      <li><strong>95th percentile delay.</strong> Averages hide the unlucky. The 95th percentile says 95% of vehicles waited less than this. It exposed something the average did not: the priority modes raise the average delay of ordinary traffic by only 16 to 18%, but the slowest 5% got much worse (26 s without priority, 35 to 43 s with it).</li>
+      <li><strong>Throughput</strong>: trips per simulated minute.</li>
+      <li><strong>Delay per vehicle type</strong>, kept in a <code>TreeMap</code> so the table is sorted by name.</li>
+      <li>The <strong>five most delayed trips</strong> in a <code>TreeSet</code> with a <code>Comparator</code>. After each insert, if the set has six entries, <code>pollLast()</code> removes the least delayed, so the set never grows.</li>
+      <li><strong>Pre-emption response time</strong>: seconds from the request to the first moment the road showed green.</li>
+      <li><strong>Vehicles turned away</strong> because an entry queue was full. Without it, a jammed road would look better than it is.</li>
+    </ul>
+    <div class="code"><div class="cap"><span>engine/StatsCollector.java</span><span>the percentile, shortened</span></div><pre><code class="java">double[] sorted = Arrays.copyOf(delays, general);
+Arrays.sort(sorted);
+s.avgDelaySec = delaySum / general;
+s.maxDelaySec = sorted[general - 1];
+s.p95DelaySec = sorted[Math.min(general - 1, (int) Math.ceil(general * 0.95) - 1)];</code></pre></div>
+    <p>All the methods are <code>synchronized</code> and <code>snapshot()</code> computes everything under one lock. The Swing thread reads one consistent set of numbers four times a second, instead of calling a dozen getters while vehicles keep reporting in between.</p>
+
+    <!-- ===================================================== 14 -->
+    <h2 id="tests">Proving it works</h2>
+    <p>A traffic simulation can look right and still be wrong. Three layers of checking give confidence, and the numbers in this chapter are what the report can cite.</p>
+
+    <h3>Layer 1 &middot; Unit tests: 26 of them, all passing</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Test class</th><th class="num">Tests</th><th>What it proves</th></tr></thead>
+      <tbody>
+        <tr><td><code>ScenarioTest</code></td><td class="num">7</td><td>Validation names the wrong field; the vehicle mix parser; copies are independent; serialization round trip; a foreign object in a <code>.gcs</code> file is refused</td></tr>
+        <tr><td><code>SignalControllerTest</code></td><td class="num">6</td><td>The fixed cycle with made-up times; adaptive gap-out; an ambulance gets green and holds it; urgency order; the fairness rule; manual override. The controller's <code>tick()</code> is driven by hand, with no threads.</td></tr>
+        <tr><td><code>LaneTest</code></td><td class="num">4</td><td>Road geometry numbers; entry queue order and capacity; the junction box excludes crossing traffic</td></tr>
+        <tr><td><code>EventBufferTest</code></td><td class="num">2</td><td>Four producers and one consumer lose nothing in 2,000 events through a buffer of 5; a consumer in <code>take()</code> really is in the WAITING state</td></tr>
+        <tr><td><code>CsvExporterTest</code></td><td class="num">2</td><td>Quoting and the header row</td></tr>
+        <tr><td><code>SqlScriptTest</code></td><td class="num">2</td><td>The <code>DELIMITER</code> parser, and that the bundled script holds exactly three procedures</td></tr>
+        <tr><td><code>MySqlIntegrationTest</code></td><td class="num">2</td><td>Against a real MySQL in a separate database: scenario CRUD including the duplicate-name error, and all three stored procedures. It skips itself if MySQL is not reachable.</td></tr>
+        <tr><td><code>SimulationEngineTest</code></td><td class="num">1</td><td>A real 60-second multithreaded run with an ambulance. It finishes, trips are completed, pre-emptions happen, nothing collides and every thread has ended.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Layer 2 &middot; The safety checker</h3>
+    <p><code>SafetyChecker</code> is a thread that watches a running simulation from outside, every 20 ms. It looks for three things.</p>
+    <ul>
+      <li><strong>Overlap.</strong> Two vehicles in one lane whose bodies overlap by more than 1 px.</li>
+      <li><strong>Box conflict.</strong> Vehicles of both axes inside the same junction at the same moment.</li>
+      <li><strong>Stall.</strong> No vehicle has completed a trip for 25 simulated seconds, or a lane's front vehicle has been standing for 40 s. It prints a full dump of every lane and signal when this happens. This is how Bugs 2 to 4 in Chapter 8 were found.</li>
+    </ul>
+    <p>Across the final benchmark, 15 runs of the Morning Peak scenario and 6 of the Hospital Road scenario, it reported <strong>zero overlaps, zero box conflicts and zero stalls</strong>.</p>
+
+    <h3>Layer 3 &middot; The benchmark</h3>
+    <p><code>Experiment</code> runs scenarios with no window, at x8 speed, and prints a table. It uses the same seed for the arrival pattern in all three priority modes, so each mode faces the same sequence of arrivals. Each figure below is the average of 5 runs of "Morning Peak": 240 simulated seconds, three junctions, fixed-time signals, about 370 vehicles and 4 to 6 emergencies per run.</p>
+    <div class="diagram">
+      <svg viewBox="0 0 760 322" role="img" aria-label="Bar chart of average delay by priority mode. Emergency vehicles: 6.1 s with no priority, 4.2 s with local sensor, 1.3 s with green corridor. Ordinary traffic: 12.2, 14.4 and 14.1 s.">
+        <rect class="bar-red" x="60" y="6" width="12" height="12"/><text class="t-sm" x="78" y="16">Emergency vehicles (line shows the range over 5 runs)</text>
+        <rect class="bar-blue" x="420" y="6" width="12" height="12"/><text class="t-sm" x="438" y="16">Ordinary traffic, average</text>
+        <g class="t-sm t-end t-muted">
+          <text x="52" y="254">0 s</text><text x="52" y="201.5">4 s</text><text x="52" y="149">8 s</text><text x="52" y="96.5">12 s</text><text x="52" y="44">16 s</text>
+        </g>
+        <line class="grid" x1="60" y1="250" x2="740" y2="250"/><line class="grid" x1="60" y1="197.5" x2="740" y2="197.5"/>
+        <line class="grid" x1="60" y1="145" x2="740" y2="145"/><line class="grid" x1="60" y1="92.5" x2="740" y2="92.5"/>
+        <line class="grid" x1="60" y1="40" x2="740" y2="40"/>
+        <rect class="bar-red" x="113" y="170" width="56" height="80"/>
+        <line class="ln" x1="141" y1="174" x2="141" y2="165"/><line class="ln" x1="137" y1="174" x2="145" y2="174"/><line class="ln" x1="137" y1="165" x2="145" y2="165"/>
+        <text class="t-md t-ctr" x="141" y="158">6.1</text>
+        <rect class="bar-blue" x="177" y="90" width="56" height="160"/><text class="t-md t-ctr" x="205" y="83">12.2</text>
+        <rect class="bar-red" x="340" y="195" width="56" height="55"/>
+        <line class="ln" x1="368" y1="211" x2="368" y2="177"/><line class="ln" x1="364" y1="211" x2="372" y2="211"/><line class="ln" x1="364" y1="177" x2="372" y2="177"/>
+        <text class="t-md t-ctr" x="368" y="170">4.2</text>
+        <rect class="bar-blue" x="404" y="61" width="56" height="189"/><text class="t-md t-ctr" x="432" y="54">14.4</text>
+        <rect class="bar-red" x="567" y="233" width="56" height="17"/>
+        <line class="ln" x1="595" y1="237" x2="595" y2="226"/><line class="ln" x1="591" y1="237" x2="599" y2="237"/><line class="ln" x1="591" y1="226" x2="599" y2="226"/>
+        <text class="t-md t-ctr" x="595" y="219">1.3</text>
+        <rect class="bar-blue" x="631" y="65" width="56" height="185"/><text class="t-md t-ctr" x="659" y="58">14.1</text>
+        <line class="ln" x1="60" y1="250" x2="740" y2="250"/>
+        <g class="t-md t-ctr"><text x="173" y="272">No priority</text><text x="400" y="272">Local sensor</text><text x="627" y="272">Green corridor</text></g>
+        <g class="t-sm t-muted t-ctr">
+          <text x="173" y="289">381 trips per run</text><text x="400" y="289">356 trips per run</text><text x="627" y="289">368 trips per run</text>
+          <text x="173" y="305">95% of trips under 26.1 s</text><text x="400" y="305">95% under 43.1 s</text><text x="627" y="305">95% under 35.3 s</text>
+        </g>
+      </svg>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Priority mode</th><th class="num">Emergency delay</th><th class="num">Range</th><th class="num">Change</th><th class="num">Ordinary average</th><th class="num">Ordinary 95th pct.</th></tr></thead>
+      <tbody>
+        <tr><td>No priority</td><td class="num">6.1 s</td><td class="num">5.8 to 6.5</td><td class="num">baseline</td><td class="num">12.2 s</td><td class="num">26.1 s</td></tr>
+        <tr><td>Local sensor</td><td class="num">4.2 s</td><td class="num">3.0 to 5.6</td><td class="num">32% less</td><td class="num">14.4 s (+18%)</td><td class="num">43.1 s</td></tr>
+        <tr class="hl"><td>Green corridor</td><td class="num">1.3 s</td><td class="num">1.0 to 1.8</td><td class="num">79% less</td><td class="num">14.1 s (+16%)</td><td class="num">35.3 s</td></tr>
+      </tbody>
+    </table></div>
+    <h4>How to read it</h4>
+    <ul>
+      <li>The corridor cuts emergency delay by about four fifths. The range over five runs (1.0 to 1.8 s) does not overlap the other two modes.</li>
+      <li>The local sensor helps, but its best runs (3.0 s) and worst runs (5.6 s) sit much closer to the no-priority range (5.8 to 6.5 s), so the benefit is smaller and less reliable. This matches the warning-time argument in Chapter 7.</li>
+      <li>Ordinary traffic pays. Both modes add roughly 2 s to the average ordinary trip. The corridor is gentler on the unlucky 5% (35 s against 43 s), because it changes lights early and in an orderly way instead of cutting a green short at the last moment.</li>
+      <li>The scenario is deliberately extreme, with an emergency about every 40 s. With a realistic rate of a few per hour, the extra cost is spread over far more vehicles.</li>
+      <li>Results differ from run to run, because the operating system schedules 40 to 60 threads differently every time. That is why each figure is an average of five runs, and why the ranges are shown.</li>
+    </ul>
+    <p>The same tool can store runs in MySQL from the console, which covers the "console" part of the JDBC unit: <code>Experiment 0 8 5 db</code>. The screenshots on this page were taken by a fourth tool, <code>ScreenshotTour</code>, which drives the real window under a virtual display and saves what it sees.</p>
+
+    <!-- ===================================================== 15 -->
+    <h2 id="syllabus">The syllabus, unit by unit</h2>
+    <p>The course has five units. Here is each topic, what it means in a sentence, and exactly where the project uses it. Class names are real, so any row can be opened and shown during the viva.</p>
+
+    <h3>Unit I &middot; Introduction to OOP and Java</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Topic</th><th>How GreenCorridor uses it</th></tr></thead>
+      <tbody>
+        <tr><td>Classes, objects, encapsulation</td><td><code>Scenario</code> and <code>TripRecord</code> keep their fields private behind getters and setters. Setters protect the data: <code>setName</code> trims, and <code>setVehicleMix</code> upper-cases. The simulation's real things (vehicle, lane, junction, signal) are objects.</td></tr>
+        <tr><td>Methods and constructors, overloading, <code>this</code></td><td><code>Scenario()</code> and <code>Scenario(String)</code>; <code>Database.getConnection()</code> and <code>getConnection(DbConfig)</code>; <code>StatTile.setValue(String)</code> and <code>setValue(String, Color)</code>. <code>this.engine = engine</code> in constructors; <code>SimulationEngine.this.stop(true)</code> to pick the outer object.</td></tr>
+        <tr><td><code>static</code></td><td><code>Vehicle.counter</code> with <code>nextNumber()</code> and <code>resetNumbering()</code>; <code>SimConfig</code>, a class of <code>static final</code> constants; <code>VehicleFactory.create()</code>; <code>main</code>.</td></tr>
+        <tr><td>Arrays</td><td><code>int[] boxOccupancy</code> in <code>Junction</code>; <code>boolean[] starved</code> in <code>SignalController</code>; <code>double[]</code> of delays, sorted for the percentile; <code>{count, average}</code> pairs per vehicle type; <code>Color[]</code> palettes; <code>int[] SPEEDS</code>.</td></tr>
+        <tr><td>Inheritance and its types, <code>super</code></td><td>Single: <code>Car extends Vehicle</code> with <code>super(26, 13, 110, 75)</code>. Multilevel: <code>Vehicle</code>, <code>EmergencyVehicle</code>, <code>Ambulance</code>. Hierarchical: five ordinary vehicle classes share one parent. Exceptions: <code>RepositoryException</code>, <code>DatabaseUnavailableException</code>.</td></tr>
+        <tr><td>Method overriding, dynamic method dispatch</td><td><code>drawBody()</code>, <code>getTypeCode()</code> and <code>getUrgency()</code> overridden in every vehicle. <code>v.draw(g, t)</code> in the canvas runs the right subclass code. <code>ScenarioRepository</code> points at MySQL or memory at run time.</td></tr>
+        <tr><td>Abstract classes, <code>final</code></td><td><code>Vehicle</code>, <code>EmergencyVehicle</code> and <code>SimEvent</code> are abstract. <code>final class Ambulance</code>; <code>final void run()</code> and <code>draw()</code>; <code>static final</code> constants.</td></tr>
+        <tr><td>Defining, implementing and extending interfaces</td><td><code>Drawable</code>, <code>Prioritized</code>, <code>Monitorable</code>, <code>EngineListener</code>, <code>SimulationCanvas.Controls</code>, <code>ScenarioRepository</code>. <code>EmergencyResponder extends Prioritized, Drawable</code> shows interface inheritance. <code>Vehicle implements Runnable, Drawable, Monitorable</code> shows several interfaces at once.</td></tr>
+        <tr><td>Packages, class path, access protection</td><td>Eight packages. <code>private</code> fields; package-private <code>SignalController.tick()</code> and <code>SimulationEngine.admit()</code>; <code>protected</code> hooks <code>beforeStep()</code> and <code>onLeaveJunction()</code>; <code>public</code> API. Maven's class path pulls in the MySQL driver.</td></tr>
+        <tr><td>Also used</td><td>Enums with fields and methods (<code>Phase</code>, <code>Direction</code>, <code>PriorityMode</code>); a generic class <code>EventBuffer&lt;T&gt;</code>; a static nested class (<code>Request</code>), an inner class (<code>Supervisor</code>), anonymous classes and lambdas.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Unit II &middot; Exception handling and multithreading</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Topic</th><th>How GreenCorridor uses it</th></tr></thead>
+      <tbody>
+        <tr><td>try, catch, throw, throws, finally</td><td><code>Vehicle.run()</code> ends with a <code>finally</code> that always cleans up. <code>Scenario.validate() throws InvalidScenarioException</code>. Every JDBC and file object sits in try-with-resources.</td></tr>
+        <tr><td>Built-in exceptions</td><td><code>InterruptedException</code>, <code>SQLException</code>, <code>SQLIntegrityConstraintViolationException</code>, <code>IOException</code>, <code>NumberFormatException</code>, <code>ClassNotFoundException</code>, <code>InvalidClassException</code>, <code>IllegalArgumentException</code>.</td></tr>
+        <tr><td>Your own exception subclasses</td><td>Six classes (Chapter 11), checked and unchecked, with extra data (<code>getField()</code>).</td></tr>
+        <tr><td>Thread life cycle</td><td>Chapter 8 and the Thread Monitor tab: queued vehicles are NEW, moving ones TIMED_WAITING, ones at a red light WAITING, finished ones TERMINATED.</td></tr>
+        <tr><td>Creating threads</td><td><code>extends Thread</code>: <code>VehicleSpawner</code>, <code>DatabaseLogger</code>, <code>Supervisor</code>. <code>implements Runnable</code>: <code>Vehicle</code>, <code>SignalController</code>, plus anonymous and lambda Runnables.</td></tr>
+        <tr><td>Thread priorities</td><td>Emergency vehicles 10, signals 7, supervisor 6, everything else 5, database logger 1.</td></tr>
+        <tr><td>Synchronizing threads</td><td><code>synchronized</code> methods on <code>Lane</code>, <code>Junction</code>, <code>StatsCollector</code>, <code>ThreadRegistry</code>, <code>SimClock</code>; synchronized blocks in <code>SignalController</code>; <code>volatile</code> fields.</td></tr>
+        <tr><td>Inter-thread communication</td><td><code>wait()</code> and <code>notifyAll()</code> in <code>EventBuffer</code>, <code>SignalController.awaitGreen</code> and <code>SimClock</code>. The producer-consumer problem solved in full.</td></tr>
+        <tr><td>String and StringBuffer</td><td><code>SqlScript</code>, <code>CsvExporter</code> and <code>RunSummaryDialog</code> build text with <code>StringBuffer</code>. <code>String.format</code>, <code>trim</code>, <code>toUpperCase</code>, <code>replaceAll</code>, <code>startsWith</code> and <code>endsWith</code> appear throughout.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Unit III &middot; Collections framework and streams</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Topic</th><th>How GreenCorridor uses it</th></tr></thead>
+      <tbody>
+        <tr><td><code>ArrayList</code></td><td>Lane snapshots for the screen; the list of scenarios and runs; <code>Scenario.builtInDefaults()</code>; results returned from the DAO.</td></tr>
+        <tr><td><code>LinkedList</code></td><td>A lane's vehicles and entry queue; the event buffer's items; the signal's ordered list of requests (with a <code>ListIterator</code>); the spawner's approaching list.</td></tr>
+        <tr><td><code>HashSet</code></td><td>Stop lines an emergency vehicle has already called; the class allow-list for deserialization.</td></tr>
+        <tr><td><code>TreeSet</code></td><td>The five most delayed trips, ordered by a <code>Comparator</code>.</td></tr>
+        <tr><td><code>HashMap</code>, <code>TreeMap</code></td><td><code>HashMap</code>: lanes by key, form fields by name, terminated-thread timestamps. <code>TreeMap</code>: delay per vehicle type, sorted by name. <code>LinkedHashMap</code>: the vehicle mix in the order typed.</td></tr>
+        <tr><td><code>StringTokenizer</code></td><td><code>Scenario.parseVehicleMix()</code> splits text on commas, then colons.</td></tr>
+        <tr><td><code>Arrays</code> class</td><td><code>Arrays.sort</code> and <code>Arrays.copyOf</code> for the percentile; <code>Arrays.asList</code> for the allow-list.</td></tr>
+        <tr><td>File streams</td><td><code>FileInputStream</code> and <code>FileOutputStream</code> in <code>ScenarioFiles</code>.</td></tr>
+        <tr><td><code>FileReader</code>, <code>FileWriter</code></td><td><code>DbConfig</code> (read and write <code>db.properties</code>), <code>RunLogWriter</code>, <code>CsvExporter</code>.</td></tr>
+        <tr><td>Serialization</td><td><code>Scenario implements Serializable</code>; export and import of <code>.gcs</code> files with an allow-list.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Unit IV &middot; GUI programming and event handling</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Topic</th><th>How GreenCorridor uses it</th></tr></thead>
+      <tbody>
+        <tr><td>Delegation event model, event sources, events, listener interfaces</td><td>The canvas, buttons, menu items, tabs and window are sources. <code>MouseEvent</code>, <code>KeyEvent</code>, <code>ActionEvent</code>, <code>WindowEvent</code> and <code>ChangeEvent</code> reach <code>MouseListener</code>, <code>MouseMotionListener</code>, <code>KeyListener</code>, <code>ActionListener</code>, <code>WindowListener</code> and <code>ChangeListener</code> implementations.</td></tr>
+        <tr><td>Adapters</td><td><code>MouseAdapter</code>, <code>KeyAdapter</code>, <code>WindowAdapter</code>.</td></tr>
+        <tr><td>Mouse and keyboard events</td><td>Hover, click and Shift+click on the map; Space, Enter, Esc, A, F, 1 to 4 and H; menu accelerators F1 and F5 to F9.</td></tr>
+        <tr><td>Layout managers</td><td><code>BorderLayout</code>, <code>FlowLayout</code>, <code>GridLayout</code>, <code>CardLayout</code>, plus <code>BoxLayout</code> and <code>GridBagLayout</code>.</td></tr>
+        <tr><td>Swing, and Swing versus AWT</td><td>All components are Swing (lightweight, pluggable look and feel, Nimbus). Painting uses AWT's <code>Graphics2D</code> and <code>AffineTransform</code>, which shows how Swing is built on AWT.</td></tr>
+        <tr><td>JFrame, JPanel, JComponent, JLabel, JTextField, JTabbedPane, buttons, JScrollPane, JComboBox, JTable</td><td>All used. The map is a custom <code>JComponent</code>.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Unit V &middot; JDBC</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Topic</th><th>How GreenCorridor uses it</th></tr></thead>
+      <tbody>
+        <tr><td>Architecture and driver types</td><td>Application, JDBC API, <code>DriverManager</code>, driver, MySQL. The driver is Type 4 (pure Java, network protocol).</td></tr>
+        <tr><td>Components</td><td><code>DriverManager</code>, <code>Connection</code>, <code>Statement</code>, <code>PreparedStatement</code>, <code>CallableStatement</code>, <code>ResultSet</code>, and the two metadata classes.</td></tr>
+        <tr><td>Establishing a connection</td><td><code>Database.getConnection()</code>, the settings dialog with Test connection, and a clear offline fallback.</td></tr>
+        <tr><td>CRUD with the console</td><td><code>Experiment ... db</code> stores runs from the command line.</td></tr>
+        <tr><td>CRUD with a Swing GUI</td><td>The Scenarios tab creates, reads, updates and deletes scenarios. The Reports tab lists and deletes runs.</td></tr>
+        <tr><td>Beyond the syllabus</td><td>Transactions (<code>setAutoCommit(false)</code>, <code>commit</code>, <code>rollback</code>), batch inserts, foreign keys with cascade, <code>ENUM</code> and <code>CHECK</code>, <code>OUT</code> parameters.</td></tr>
+      </tbody>
+    </table></div>
+
+    <!-- ===================================================== 16 -->
+    <h2 id="viva">Questions you may be asked</h2>
+    <p>Short answers, each pointing at the code that shows it.</p>
+    <dl class="qa">
+      <dt>Why one thread per vehicle? Is that not wasteful?</dt>
+      <dd>Each vehicle makes its own decisions and sometimes has to wait, so a thread per vehicle mirrors the problem and keeps the code simple. With 30 to 80 threads it is cheap, and a vehicle waiting at a red light uses no CPU. At 10,000 vehicles we would switch to a pool of threads and a time-stepped loop.</dd>
+      <dt>What is the difference between <code>sleep()</code> and <code>wait()</code>?</dt>
+      <dd><code>sleep</code> pauses the thread for a fixed time and keeps any locks it holds. <code>wait</code> must be called inside <code>synchronized</code>, releases that lock while waiting, and resumes when another thread calls <code>notify</code> or <code>notifyAll</code>. Vehicles use <code>sleep</code> between ticks and <code>wait</code> at a red light.</dd>
+      <dt>Why is <code>wait()</code> inside a <code>while</code> loop?</dt>
+      <dd>A woken thread must re-check its condition. <code>notifyAll</code> wakes every waiter, including those whose condition is still false, and Java permits spurious wake-ups. See <code>EventBuffer.put</code> and <code>awaitGreen</code>.</dd>
+      <dt>How do you stop two crossing vehicles being in the junction together?</dt>
+      <dd>Two layers. The signal never shows green to both roads, with an all-red gap between phases. And <code>Junction.tryEnterBox</code> is a <code>synchronized</code> check-and-update, so even if the signal had a bug, a vehicle would be held at the stop line. The safety checker found no violations.</dd>
+      <dt>What does <code>volatile</code> do, and why is it enough for <code>frontS</code>?</dt>
+      <dd>It makes a write by one thread visible to all others at once. It does not make a read-modify-write atomic. <code>frontS</code> has a single writer, the vehicle's own thread, so there is no race. Other threads only read it.</dd>
+      <dt>Could your program deadlock?</dt>
+      <dd>We fixed a lock order: signal lock first, then lane lock, never the other way. Lanes read the signal's phase through a volatile field and take no signal lock. We also found and fixed a <em>logical</em> circular wait, where vehicles blocked each other while letting an ambulance through (Chapter 8, Bug 3).</dd>
+      <dt>Why is <code>run()</code> declared <code>final</code>?</dt>
+      <dd>It contains the safety logic and the cleanup. A subclass can change what a vehicle looks like or how fast it is, but not how the loop works.</dd>
+      <dt>Where do you use dynamic method dispatch?</dt>
+      <dd>The canvas calls <code>v.draw(g, t)</code> on a mix of cars, buses and ambulances, and each one runs its own <code>drawBody</code>. Also <code>ScenarioRepository repo</code>, which at run time is the MySQL or the in-memory class.</dd>
+      <dt>Why an interface for the repository instead of just using MySQL?</dt>
+      <dd>The user interface depends only on the interface, so the app works offline with the in-memory version, and the two can be swapped when the connection changes. It also makes the code easy to test.</dd>
+      <dt>How is SQL injection prevented?</dt>
+      <dd>Every value goes through a <code>PreparedStatement</code> parameter. No user text is ever concatenated into SQL. A scenario named <code>x'; DROP TABLE scenario;--</code> is stored as plain text.</dd>
+      <dt>Why does the logger use a buffer instead of inserting straight from each vehicle?</dt>
+      <dd>A database insert takes milliseconds, and 50 threads would queue on it and freeze the animation. With the buffer, a vehicle only does a fast in-memory <code>put</code>. One logger thread at the lowest priority batches 25 rows per commit.</dd>
+      <dt>What is a <code>CallableStatement</code> and where do you use it?</dt>
+      <dd>It calls a stored procedure. Ours are <code>sp_start_run</code> (returns the run id as an OUT parameter), <code>sp_finish_run</code> (three OUT values) and <code>sp_mode_comparison</code> (returns a result set for the chart).</dd>
+      <dt>Why is deserialization dangerous and what did you do?</dt>
+      <dd>Java instantiates whatever classes a file names, and crafted files have been used to run code. <code>ScenarioFiles</code> reads through an <code>ObjectInputStream</code> subclass that refuses every class not on a short allow-list. A test proves a foreign object is rejected.</dd>
+      <dt>How do you know the simulation is correct?</dt>
+      <dd>Twenty-six unit tests, a safety checker thread that watches for overlaps, box conflicts and stalls every 20 ms of a real run, and a benchmark that repeats each configuration five times. The checker found four real bugs along the way.</dd>
+      <dt>Why do you say the results are approximate?</dt>
+      <dd>The operating system schedules the threads differently each time, so no two runs are identical, and the physical constants are tuned for a readable animation. That is why results are averages over five runs, shown with their ranges.</dd>
+    </dl>
+
+    <!-- ===================================================== 17 -->
+    <h2 id="limits">Limits and what next</h2>
+    <h3>What the model leaves out</h3>
+    <ul>
+      <li>One lane per direction, and no turning. Vehicles go straight across the map.</li>
+      <li>No pedestrians, and no breakdowns or accidents.</li>
+      <li>Braking and acceleration constants are tuned for a clear animation, not taken from real vehicles.</li>
+      <li>The corridor "radio" is perfect and instant. A real system needs GPS, a route prediction and a communication network.</li>
+      <li>The three junctions use independent signals. Real main roads coordinate their offsets in a "green wave".</li>
+      <li>At most three junctions, and ambulances always run east on the main road or south on a cross street.</li>
+      <li>Run-to-run variation comes from real thread scheduling. We average it out and do not claim exact figures.</li>
+    </ul>
+    <h3>Natural next steps</h3>
+    <ul>
+      <li>Green-wave coordination along the main road, combined with the corridor.</li>
+      <li>Adaptive signals plus corridor in the benchmark (the scenario "Evening Rush" already uses both).</li>
+      <li>Turning movements and a larger grid of roads.</li>
+      <li>Real traffic counts as scenario input, loaded from a CSV file.</li>
+      <li>A route planner, so the ambulance chooses the road with the best chance of green lights.</li>
+    </ul>
+    <h3>If you read only seven files</h3>
+    <ol>
+      <li><code>ui/MainFrame.java</code> for the overall structure.</li>
+      <li><code>engine/SimulationEngine.java</code> for how a run starts, runs and ends.</li>
+      <li><code>vehicle/Vehicle.java</code>, especially <code>run()</code> and <code>step()</code>.</li>
+      <li><code>engine/SignalController.java</code> for phases and pre-emption.</li>
+      <li><code>road/Lane.java</code> for the shared lists and the lane rules.</li>
+      <li><code>engine/EventBuffer.java</code> and <code>engine/DatabaseLogger.java</code> for producer-consumer into MySQL.</li>
+      <li><code>src/main/resources/sql/green_corridor.sql</code> for the schema and stored procedures.</li>
+    </ol>
+
+    <div class="foot">
+      <p>GreenCorridor, a course end project by Madhavarapu Saritha (25881A05V7), Chepyala Vishal (25881A05X9) and Gundu Srijay Krishna (25881A05X0), Batch 6. Source code, tests, SQL script and screenshots are in the folder <code>Course_End_Project_Java_Green_Corridor</code> of the project repository. To run it, follow <code>app/README.md</code>.</p>
+    </div>
+  </article>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- Java syntax colouring (small, hand-written) ---------- */
+  var KEYWORDS = "abstract|assert|boolean|break|byte|case|catch|char|class|continue|default|do|double|else|enum|extends|final|finally|float|for|if|implements|import|instanceof|int|interface|long|new|null|package|private|protected|public|return|short|static|super|switch|synchronized|this|throw|throws|try|void|volatile|while|true|false";
+  var JAVA = new RegExp("(\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/)|(\"(?:[^\"\\\\\\n]|\\\\.)*\")|(@\\w+)|\\b(" + KEYWORDS + ")\\b|\\b(\\d+(?:\\.\\d+)?[LDdf]?)\\b", "g");
+  function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function colour(code) {
+    var out = "", last = 0, m;
+    JAVA.lastIndex = 0;
+    while ((m = JAVA.exec(code)) !== null) {
+      out += esc(code.slice(last, m.index));
+      var cls = m[1] ? "cm" : m[2] ? "st" : m[3] ? "an" : m[4] ? "kw" : "nu";
+      out += '<span class="' + cls + '">' + esc(m[0]) + "</span>";
+      last = JAVA.lastIndex;
+    }
+    return out + esc(code.slice(last));
+  }
+  var blocks = document.querySelectorAll("code.java");
+  for (var i = 0; i < blocks.length; i++) { blocks[i].innerHTML = colour(blocks[i].textContent); }
+
+  /* ---------- reading progress and the active chapter ---------- */
+  var bar = document.getElementById("progress");
+  function onScroll() {
+    var h = document.documentElement;
+    var max = h.scrollHeight - h.clientHeight;
+    var p = max > 0 ? (window.pageYOffset || h.scrollTop) / max : 0;
+    bar.style.transform = "scaleX(" + Math.max(0, Math.min(1, p)) + ")";
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+
+  var links = Array.prototype.slice.call(document.querySelectorAll(".toc a"));
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute("href").slice(1)] = a; });
+  var heads = Array.prototype.slice.call(document.querySelectorAll("article h2[id]"));
+  var current = null;
+  function markActive() {
+    var line = window.innerHeight * 0.3, found = null;
+    for (var i = 0; i < heads.length; i++) {
+      if (heads[i].getBoundingClientRect().top <= line) { found = heads[i]; } else { break; }
+    }
+    var id = found ? found.id : null;
+    if (id !== current) {
+      current = id;
+      links.forEach(function (l) { l.classList.remove("on"); });
+      if (id && byId[id]) { byId[id].classList.add("on"); }
+    }
+  }
+  window.addEventListener("scroll", markActive, { passive: true });
+  window.addEventListener("resize", markActive);
+  markActive();
+
+  /* ---------- the pre-emption playground ----------
+     A JavaScript copy of SignalController's phase logic (fixed-time mode),
+     with the same numbers as the Java code. For explanation only. */
+  var root = document.getElementById("sigdemo");
+  if (!root) { return; }
+  var CFG = { main: 12000, cross: 8000, yellow: 3000, allRed: 2000, minGreen: 4000, recovery: 3000 };
+  var NAMES = ["Main road green", "Main road yellow", "All red", "Cross street green", "Cross street yellow", "All red"];
+  var state, counter;
+
+  function fresh() {
+    counter = { amb: 0, fire: 0 };
+    return { phase: 0, start: 0, now: 0, reqs: [], starved: { EW: false, NS: false }, protectedUntil: 0, manual: false, logLines: [] };
+  }
+  function axisOf(p) { return p < 3 ? "EW" : "NS"; }
+  function other(a) { return a === "EW" ? "NS" : "EW"; }
+  function greenTime(a) { return a === "EW" ? CFG.main : CFG.cross; }
+  function greenFor(a) { return state.phase % 3 === 0 && axisOf(state.phase) === a; }
+  function mmss(ms) { var t = Math.floor(ms / 1000); return ("0" + Math.floor(t / 60)).slice(-2) + ":" + ("0" + (t % 60)).slice(-2); }
+
+  function log(text) {
+    var ol = document.getElementById("sd-log");
+    var li = document.createElement("li");
+    var b = document.createElement("b");
+    b.textContent = mmss(state.now);
+    li.appendChild(b);
+    li.appendChild(document.createTextNode(text));
+    ol.appendChild(li);
+    while (ol.children.length > 60) { ol.removeChild(ol.firstChild); }
+    ol.scrollTop = ol.scrollHeight;
+  }
+
+  function setPhase(p) {
+    state.phase = p;
+    state.start = state.now;
+    if (p % 3 === 0) {
+      var a = axisOf(p);
+      if (state.starved[a]) {
+        state.starved[a] = false;
+        state.protectedUntil = state.now + CFG.minGreen;
+        log((a === "EW" ? "Main road" : "Cross street") + " was held red for an emergency, so it is owed at least 4 s of green.");
+      }
+    }
+  }
+
+  function tick() {
+    var head = state.reqs[0];
+    var el = state.now - state.start;
+    var light = state.phase % 3;
+    if (head) {
+      var target = head.axis;
+      state.starved[other(target)] = true;
+      if (greenFor(target)) {
+        state.reqs.forEach(function (r) {
+          if (r.axis === target && r.green < 0) {
+            r.green = state.now;
+            log(r.name + " has green after " + ((state.now - r.at) / 1000).toFixed(1) + " s.");
+          }
+        });
+        return;                                   // hold the green while it comes
+      }
+      if (light === 0) {
+        if (state.now >= state.protectedUntil) { setPhase(state.phase + 1); }   // end the other road's green
+      } else if (light === 1) {
+        if (el >= CFG.yellow) { setPhase((state.phase + 1) % 6); }
+      } else if (el >= CFG.allRed) {
+        setPhase(target === "EW" ? 0 : 3);
+      }
+    } else if (light === 0) {
+      if (state.manual || el >= greenTime(axisOf(state.phase))) { state.manual = false; setPhase((state.phase + 1) % 6); }
+    } else if (light === 1) {
+      if (el >= CFG.yellow) { setPhase((state.phase + 1) % 6); }
+    } else if (el >= CFG.allRed) {
+      setPhase((state.phase + 1) % 6);
+    }
+  }
+
+  function request(kind) {
+    if (state.reqs.length >= 4) { log("Four vehicles are already waiting."); return; }
+    var amb = kind === "amb";
+    counter[kind]++;
+    var r = { name: (amb ? "Ambulance " : "Fire engine ") + "#" + counter[kind], axis: amb ? "EW" : "NS",
+              urgency: amb ? 3 : 2, at: state.now, green: -1, fire: !amb };
+    var i = 0;
+    while (i < state.reqs.length && state.reqs[i].urgency >= r.urgency) { i++; }   // ordered by urgency
+    state.reqs.splice(i, 0, r);
+    log(r.name + " asks for green on the " + (amb ? "main road" : "cross street") + " (urgency " + r.urgency + ").");
+  }
+
+  function release() {
+    var r = state.reqs.shift();
+    if (!r) { log("Nobody is waiting."); return; }
+    if (r.green < 0 && greenFor(r.axis)) { r.green = state.now; }
+    log(r.name + " has passed. Junction released.");
+    if (state.reqs.length === 0 && state.phase % 3 === 0) {
+      var limit = greenTime(axisOf(state.phase));
+      state.start = state.now - Math.max(0, limit - CFG.recovery);       // recovery: green ends in 3 s
+      log("Recovery: this green will end in " + (CFG.recovery / 1000) + " s.");
+    }
+  }
+
+  function render() {
+    var head = state.reqs[0];
+    ["EW", "NS"].forEach(function (a) {
+      var lamps = document.getElementById("lamps-" + a).children;
+      var yellow = state.phase % 3 === 1 && axisOf(state.phase) === a;
+      var green = greenFor(a);
+      lamps[0].className = "r" + (!green && !yellow ? " on" : "");
+      lamps[1].className = "y" + (yellow ? " on" : "");
+      lamps[2].className = "g" + (green ? " on" : "");
+    });
+    var el = state.now - state.start;
+    var light = state.phase % 3;
+    var label = NAMES[state.phase];
+    var held = head && greenFor(head.axis);
+    if (held) { label += ", held for " + head.name; }
+    document.getElementById("sd-phase").textContent = label;
+    var duration = light === 0 ? greenTime(axisOf(state.phase)) : light === 1 ? CFG.yellow : CFG.allRed;
+    var fill = document.getElementById("sd-fill");
+    fill.style.width = (held ? 100 : Math.min(100, 100 * el / duration)) + "%";
+    fill.className = "fill" + (held ? " hold" : "");
+    document.getElementById("sd-time").textContent = (el / 1000).toFixed(1) + " s in this phase";
+    var note = "";
+    if (head && light === 0 && !greenFor(head.axis) && state.now < state.protectedUntil) {
+      note = "this road is protected for " + ((state.protectedUntil - state.now) / 1000).toFixed(1) + " s more";
+    } else if (head) {
+      note = "priority: " + head.name;
+    }
+    document.getElementById("sd-note").textContent = note;
+    var box = document.getElementById("sd-reqs");
+    box.innerHTML = "";
+    state.reqs.forEach(function (r, i) {
+      var s = document.createElement("span");
+      s.className = (r.fire ? "fire" : "") + (i === 0 && state.reqs.length > 1 ? " first" : "");
+      s.textContent = r.name;
+      box.appendChild(s);
+    });
+  }
+
+  var speed = 2;
+  function reset() {
+    state = fresh();
+    document.getElementById("sd-log").innerHTML = "";
+    log("Fixed-time cycle running: main road green first. Use the buttons to send emergency vehicles.");
+    render();
+  }
+  document.getElementById("sd-amb").addEventListener("click", function () { request("amb"); });
+  document.getElementById("sd-fire").addEventListener("click", function () { request("fire"); });
+  document.getElementById("sd-pass").addEventListener("click", release);
+  document.getElementById("sd-force").addEventListener("click", function () {
+    if (state.reqs.length === 0 && state.phase % 3 === 0) { state.manual = true; log("Police override: this green ends now."); }
+    else { log("Override refused: the lights are already changing, or held for an emergency."); }
+  });
+  document.getElementById("sd-speed").addEventListener("change", function (e) { speed = parseInt(e.target.value, 10) || 1; });
+  reset();
+  setInterval(function () { state.now += 50 * speed; tick(); render(); }, 50);
+})();
+</script>
